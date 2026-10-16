@@ -12,6 +12,9 @@ on:
       - 'observability/event_codes_v1.json'
       - 'security/mosquitto.conf'
       - 'security/target-acl'
+      - 'scripts/render_broker_acl.py'
+      - 'tests/test_broker_acl_renderer.py'
+      - 'tests/test_broker_acl_integration.py'
       - 'tests/test_target_security_ota.py'
       - '.github/workflows/backend_security.yml'
   push:
@@ -25,6 +28,9 @@ on:
       - 'observability/event_codes_v1.json'
       - 'security/mosquitto.conf'
       - 'security/target-acl'
+      - 'scripts/render_broker_acl.py'
+      - 'tests/test_broker_acl_renderer.py'
+      - 'tests/test_broker_acl_integration.py'
       - 'tests/test_target_security_ota.py'
       - '.github/workflows/backend_security.yml'
 

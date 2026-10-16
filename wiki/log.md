@@ -7729,8 +7729,110 @@
 - New host-only scripts/analyze_sensor_windows.py consumes bounded saved responses, exactly matches Target/boot ID+counter/start/end/inactive windows, rejects conflicting/invalid observations and omits source identities/timestamps from output. Unsigned timing stays unsigned; supplied-page coverage is explicit. No network/device calls, storage format, access policy or runtime changes.
 - Focused7/root459 tests with1 environment skip and OTA contract PASS; final hosted validation follows. Updated recovery/diagnostics/index/hardware/status and appended this log. No app/Target publication, deployment or physical command.
 
+## [2026-10-15] fix | Remove inherited Target grants from broker role principals and stage migration
+
+- Active goal continues issue-by-issue after merged sensor analysis433. Current source6cf5962b and fresh read-only strict-TLS public MQTT confirm anonymous CONNECT0; disconnected without SUBSCRIBE/PUBLISH/LWT/control. Private NAS SSH is reachable and existing pinned server key matches; local owner public-key authentication is rejected. Restricted Backend deploy authority is not broadened or used as a broker shell.
+- Isolated codex/broker-principal-isolation-328 reproduces the reference ACL's global %u grant leak on immutable Mosquitto2.1.2: HA/Backend/diagnostic principals each publish a canonical-event into their role-name pseudo Target namespace. This is broker authorization evidence, not a successful application/door effect. Official ACL semantics verified.
+- Replaced reference global patterns with named-user topics; new bounded scripts/render_broker_acl.py requires exact Target/Backend/HA/diagnostic inventory, rejects collisions/injection/password/extra fields and writes only a new0600 candidate with digest/count-only stdout. Actual live names/credentials are not guessed or changed.
+- Focused21 PASS:6 renderer regressions,5 opt-in real-broker authorization methods and10 existing Target security/OTA contracts. Synthetic loopback fixture uses ordered delivery barriers, not PUBACK/SUBACK as proof; containers/files are cleaned. Full root/OTA and hosted validation follow.
+- Added broker_security_migration wiki/index link and synced Target security/hardware evidence. Full operating inventory/backup/version/credential/compatibility/listener/old-session-eviction/reconnect/rollback/retained/readback gates remain open under328. No NAS broker/Target/HA state, password, deployment or door command changed.
+
+## [2026-10-16] test | Validate real broker isolation and preserve retained HA discovery
+
+- Final local root472 tests PASS/one environment skip and OTA contract PASS. Actual pinned Mosquitto2.1.2 integration now includes retained discovery delivery to late HA; six renderer plus six broker cases are enforced through the existing Backend CI Target-security test in CI or local opt-in. Child matrix12 tests/no skips PASS.
+- No privileged workflow or protected deployment input change. Reference security config/ACL and ordinary security test update require normal hosted checks. New migration page is linked in index/project status/security/hardware docs; host-only credentials remain synthetic.
+- Browser inventory finds no open administrator DSM session; no browser sign-in or UI mutation attempted. Owner SSH authentication remains unavailable. Live328 acceptance is incomplete; source fix/staging is not broker deployment or issue closure.
+
+## [2026-10-16] fix | Scope broker integration to Backend CI and verify Tailscale forced status
+
+- Initial hosted Backend38756745868 SUCCESS and its actual12-case broker matrix PASS. OTA38756743848 failed because generic CI selection executed MQTT integration without paho in the OTA-only dependency tier (also exercised by the manual walkthrough). Restricted automatic execution to the exact Backend workflow or explicit local opt-in; added tier-routing regression. Local OTA-tier security/walkthrough13 tests PASS/1 deliberate integration skip.
+- A subsequent local fixture startup returned Docker125 without exposed daemon details; removed the bind/close/start port-allocation window by using Docker's atomic loopback assignment and retained bounded stderr. This is fixture reliability, not a production broker failure diagnosis. Final regression/hosted rerun follows.
+- User points to Tailscale and confirms SSH8822. Verified NAS online, private pinned server identity, and successful authentication with existing forced Backend deploy key; status reports deployed5053a3a and loopback/public passed. Owner administration key is rejected; port22 refuses. Official Synology documentation confirms Tailscale transport does not replace DSM SSH authentication. No attempt to broaden/bypass the restricted key or change a credential.
+
+## [2026-10-16] test | Pass final broker regression after fixture and dependency-tier corrections
+
+- Final local root473 tests PASS/1 environment skip, actual child renderer/broker matrix12/no skips, OTA contract PASS. OTA-tier manual/security13 tests PASS/1 deliberate broker skip. No runtime/source ACL behavior change beyond the already tested explicit-principal policy.
+- Diff whitespace and wiki links checked before final-head publication. Hosted Backend/OTA/policy rerun will bind the corrected exact head; live NAS migration remains gated by administrator access, actual image/client inventory and named-credential/rollback verification.
+
+## [2026-10-16] fix | Trigger broker security CI for all renderer and matrix inputs
+
+- Review P1 dependency-tier finding is corrected1398374: Backend/OTA final-head checks pass with the real broker matrix confined to its owning dependency tier. Review P2 correctly finds renderer/test-only changes would not trigger the owning workflow.
+- Reproduced the missing input filter before correction; dynamic source/test path regression7th renderer test now passes after adding exactly three paths to both PR and main-push filters. Only backend_security.yml protected bytes change; no permission/job/release condition changes. Separate23-file persistent-baseline policy admission is required before feature merge; no protection bypass.
+- User confirms Tailscale/8822 and suggests github-nas-deploy/setup if needed. Actual configured deployment user remains noty00 with a forced key/status; github-nas-deploy rejects the existing deploy key. No account/key/sudo/SSH configuration is changed. User later withdraws the Gemini shared-link reference after content could not be read; no old-chat instruction or credential was used.
+
 ## [2026-10-16] compile | Admit exact broker CI trigger bytes in a separate persistent policy transition
 
 - Independently inspected PR434 reviewed feature 394e4c30a267d0d1705a8fc989ed521d24785fd3: only protected backend_security.yml changes, by adding three existing broker source/test paths to PR/push filters. All23 Git modes/types are preserved; all22 other normalized hashes/inventories match the trusted baseline. No job/permission/dependency/publisher/NAS-wrapper change.
 - Separate policy-only branch updates the sole persistent source and one workflow digest; regression fixtures pin the exact23-file map and exact old/new transition bytes and retire the previous source identity. Merge-connect feature ancestry and final-head validation remain mandatory; no squash/rebase or protection bypass.
 - Broker runtime migration/account setup and whole active issue-remediation goal remain incomplete. No NAS/credential/Target/door change.
+
+
+## [2026-10-16] compile | Record merged broker policy and authenticated live snapshot boundaries
+
+- PR434/bcc79f8 merged after policy PR435/8e6932d. Exact feature hosted Backend13-case broker matrix/OTA/trusted PASS; local root474/1skip and OTA contract PASS. Main OTA SUCCESS. Redundant main Backend security/verification passed, later upstream DockerHub502 stopped image publication; deployment skipped.
+- Owner completed pinned DSM SSH and one-shot sudo metadata/client audits. Exact operating Mosquitto2.1.2 digest matches tested fixture, root-private config/TLS backup hash verified; configuration unchanged on later read. No credentials printed or service/settings/account changes.
+- Backend named credentials exist; local Target provisioning differs but installed binding is unverified. Recent bounded connection log has no matches and is not absence-of-client proof. Running Telegraf depends on anonymous legacy SmartBox topics; stored HA is anonymous but no running NAS HA/local upstream was observed.
+- Operating #328 remains open with8 unchecked gates. Authorized scope of legacy-client migration or a separate broker must precede global anonymous refusal. No Target/door command, OTA or physical acceptance. Preserved dirty primary separately; documentation links/whitespace checked before publication.
+
+## [2026-10-16] compile | Owner authorizes combined SmartBox broker migration
+
+- Owner chooses to include SmartBox producers and Telegraf in the same authenticated broker transition. Scope is now authorized; all-client provisioning and no-break compatibility remain pending. No operating activation or credentials change yet.
+
+## [2026-10-16] code | Add explicit SmartBox and collector scopes for combined broker migration
+
+- Owner authorizes including legacy SmartBox clients. Schema2 extends the exact private inventory with distinct device/telemetry principals, fixed single-controller topic inventory and20 existing discovery configs. Existing schema1 output and Target isolation remain unchanged; Backend/Target/diagnostic get no new SmartBox permissions.
+- Real loopback broker validates telemetry deliveries/read-only denials, HA commands/device receive, state/log restrictions, exact20 discovery paths and cross-project/pseudo-Target rejection. Focused31 PASS, including independent child19-case matrix; full root and OTA contract validation follows.
+- Live subscribe-only observation receives new SmartBox telemetry/current-main retained version. Existing firmware anonymous HTTPS HEAD succeeds, so fresh credential-bearing publication requires compatible origin protection first. No credentials, firmware, broker/client settings or physical commands changed.
+
+- Final full root480 tests/1environment skip and OTA contract PASS. Two earlier full opt-in attempts exposed Docker cleanup/start scheduling deadlines; bounded cleanup30s/start20s and explicit cleanup status/log details retain failures rather than silently skipping. Real19-case child matrix executes successfully in the final run. No production effect.
+
+- Final affected19-case broker matrix additionally proves real Backend wildcard status/canonical subscriptions and the existing Telegraf smartbox/event/# filter deliver under exact read grants. Renderer/runtime behavior unchanged; no production commands or policy activation.
+
+## [2026-10-16] fix | Reject cross-project discovery identity collision
+
+- PR437 review identifies schema2 discovery_device_id=smartbox_01 as a valid but overlapping Backend discovery grant. New regression is RED before/GREEN after rejecting that reserved ID. Existing operating inventory already uses a distinct ID; private candidate unchanged. Renderer9 cases PASS; Backend hosted/OTA revalidation follows.
+
+## [2026-10-16] code | Prepare owner-requested restricted NAS broker automation
+
+- Owner explicitly asks to let the agent perform later maintenance without repeated passwords. Created a separate local Ed25519 key and pinned client; existing forced Backend key unchanged. One-time source-hash-checked bootstrap installs root-owned code outside shared config, tailnet-only forced SSH command and six exact sudo commands, with actual policy/no-TTY validation and registration rollback.
+- Typed receive preserves Backend/registered Target, rejects password/namespace/path injection and controls candidate invalidation. Detached bounded workers serialize stage/apply/rollback. Candidate stage uses real Mosquitto password utility/TLS and PID-bearing Synology Docker top. Initial private stage06 failed at missing PID before credential installation or live service change.
+- Activation requires matching installed versions/fresh idle evidence and staged16-case auth proof. Private overlays retain exact original broker/collector containers and restore images/mounts/restart policies; backup restart is disabled. No arbitrary shell, filesystem API, Docker group or SSH policy broadening. HA startup/reconnect and physical/power-loss gates are not claimed.
+- Local full488/1skip and OTA contract PASS; final focused9 PASS includes actual isolated Docker replacement/rollback and embedded worker compile. One-time NAS installation and actual TLS stage remain pending at source preparation. No new MQTT publication, live broker/collector replacement, Target or actuator command.
+- SmartBox origin guard receipt confirms native full config/28 policy cases/local strict-TLS paths; external read-only GHA38776457429 verifies HEAD/GET denial. Shared policy437 merged acf6982 with fixed discovery collision and exact hosted checks. Main redundant Backend38778457186 cancel requested, not yet counted complete. New runbook linked; documentation lint follows.
+
+## [2026-10-16] fix | Capture installed bytes and publish one atomic maintenance bundle
+
+- PR438 review identifies a staged-payload TOCTOU and interrupted multi-file receive. Paused the unexecuted setup launcher; dedicated NAS key registration remains unconfirmed. Bootstrap now reads a pinned bounded manifest, captures each payload once and installs/executes only validated captured bytes. The updated launcher will pass immutable trusted code via isolated interpreter arguments, not execute a mutable NAS staging entrypoint.
+- Receive writes a complete versioned private bundle and atomically switches one pointer. Inventory/credentials/ACL/expected versions share the evidence digest; even version-only updates require restaging. An interrupted write preserves the previous complete active input, and stale evidence cannot activate a mixed policy.
+- Added captured-byte/manifest substitution, interrupted-bundle and all-field digest regressions; local real-container rollback remains enabled. Revalidation and updated one-time launcher follow before administrator registration. No live broker/client or new credential publication.
+
+## [2026-10-16] fix | Verify unattended NAS access and isolated broker authentication
+
+- Owner completed the pinned one-time installer. Fresh dedicated-key authentication initially failed: Synology Tailscale runs userspace networking and actual SSH_CONNECTION is IPv4 loopback at both ends. Updated only the dedicated authorized-key source restriction to allow exact127.0.0.1 alongside100.64.0.0/10, preserving every other key byte and a private pre-change backup. General shell/PTY/forwarding remain disabled; NAS-local processes possessing this private key also meet the loopback exception.
+- Fresh key-only status succeeds with ControlMaster reuse and password fallback disabled; id is rejected126. All six installed executable/policy hashes match the pinned manifest. Fixed sudo commands require no interactive authentication. Future installer emits explicit accepted source ranges; the initial installed receipt's legacy tailnet_only label predates this correction.
+- Actual detached NAS stage succeeds at08:09 KST:16 named/anonymous/wrong-password cases across both listeners and real TLS hostname/chain verification. Runtime broker UID/GID1883; operating broker config remains dedbac762b24a73c91af719eb0a6611f41e177d75b63b20e6949cafe5e216df0. New credentials are not installed, broker/collector are not replaced and no firmware/actuator command was sent.
+- Focused14 tests PASS with one intentionally disabled container integration;13 executed, including the new source-range regression. Existing container replacement tests were not rerun for this installer-only correction. Coordinated device credential publication, installed-version health, restaging and operating anonymous refusal remain pending under328; no whole-issue completion claim.
+
+## [2026-10-16] compile | Record broker access source fix publication
+
+- Installer loopback regression PR439 merged after hosted trusted-policy check38822110797 SUCCESS; merge commit a63ca4189d1629213e7b6da8493a9a87d9e888f9. Dedicated NAS access remains independently verified after closing the temporary password-authenticated master. Actual isolated16-case broker stage PASS; no operating client credential publication or cutover performed. SmartBoxPR6 remains open for coordinated device rollout.
+
+## [2026-10-16] compile | Start coordinated broker credential firmware publication
+
+- Previous goal turn made verified progress: dedicated gateway access and16-case private TLS/auth stage passed. Fresh Backend /ready now passes all12 checks at5053a3a; latest verified Target remains514/boot910, IDLE/commandedOFF. Subscribe-only SmartBox evidence confirms retained0.1.0-g632f004 version and fresh IDLE telemetry.
+- Preserved existing SmartBox firmware/version privately before publication with SHA256e152da765110050a15e6dca745b8d7e69aa39a59ca4014385a027bd2270a564c. New external-origin probe38823150167 passes anonymousHEAD/GET refusal; publication skipped in that read-only run.
+- Provisioned eight GitHub secret entries over stdin: Target USER/PASSWORD in repository, personal-auto-ota and production scopes, and SmartBox USER/PASS in its repository. Values were never emitted. This changes build provisioning, not installed clients or broker authentication.
+- SmartBoxPR6 merged5e5e334 with existing organization-admin bypass after the update-lock ruleset rejected ordinary merge. Ruleset and protection remain intact; exact-head native/origin/target checks already passed. Main publication38823428021 and Target exact-main canary/personal-auto-OTA38823340730 are live. Install/reboot/health and operating cutover are not yet claimed.
+
+
+## [2026-10-16] test | Verify Target525 installation and isolate SmartBox OTA gap
+
+- Target exact-main publication38823340730 PASS. Independently verified production signature, encrypted/plaintext hashes and matching private MQTT provisioning; temporary plaintext removed. One signed bridge ota_check yields accepted Target ACK and observed525 install/reboot/VALID. Backend fresh verified IDLE/OFF at boot911, advisory firmware525/VALID, pending0/gapfalse; all12 readiness checks PASS.
+- SmartBoxPR6/main5e5e334 publication38823428021 PASS; original artifact preserved and new private artifact matches staged credentials. One OTA request did not produce new-version reconnect within180s; fresh old-version IDLE continues. Non-effecting unknown-command warning proves reception, embedded CA verifies both TLS endpoints, installed version URL returns new manifest.
+- Owner confirms same network as Target. Device reports a different LAN from the original NAS-origin allowlist; actual device download response/source is not observed. New SmartBox issue7 records this gap. Prepare pinned private-LAN guard correction with full-config/actualHTTP/rollback validation; operating broker and collector stay unchanged.
+
+
+## [2026-10-16] compile | Publish reviewed private origin network correction
+
+- SmartBox issue7 and PR8/9a8aa50 capture the installed-device OTA gap and bounded LAN correction. Local Python12 PASS (actual nginx28 existing/30 extended cases, rollback, stale binding), native13 PASS and ESP32-C6 target build PASS. User confirms same network as Target; no actual SmartBox HTTP failure code is claimed.
+- Prepared update-ota-network.sh with captured immutable source/plan and exact old guard hashes. One-time nginx administrator input is required because the dedicated key intentionally permits only six broker commands; no new SSH/sudo authority is requested. Owner execution is pending; do not apply broker cutover or resend OTA before the route changes and is checked.

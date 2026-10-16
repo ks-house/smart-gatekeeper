@@ -68,6 +68,7 @@
 | [admin_control_plane_security.md](admin_control_plane_security.md) | #49 deny-by-default mTLS admin sessions, tenant RBAC/CSRF/re-auth, dual-control force-open, immutable audit, OTA/manual boundary |
 | [ota_reliability_contract.md](ota_reliability_contract.md) | 모바일 앱·Target update 경로 독립성, dual-slot health/rollback, N/N-1 호환과 release blocking 시험 |
 | [target_command_ota_security.md](target_command_ota_security.md) | #50 verified per-Target MQTTS, Backend-only canonical audit read, signed durable commands/OTA, local recovery와 production evidence boundary |
+| [broker_security_migration.md](broker_security_migration.md) | #328 explicit principal ACL renderer, isolated real-broker authorization regression and backup/credential/cutover/rollback gates; live migration pending |
 | [commercial_operations.md](commercial_operations.md) | #52 privacy-safe operations, bounded resilience, readiness/metrics/SLO, backup/restore, hardened production Compose, supply-chain and evidence Gates |
 | [nas_backend_external_deployment_plan.md](nas_backend_external_deployment_plan.md) | GHCR immutable images, signed bundle, ephemeral Tailscale control plane, forced NAS deploy wrapper, backup-first migration/readiness implementation and live rollout Gates |
 | [observability_event_schema.md](observability_event_schema.md) | hands-free/수동 access/update envelope, Backend schema 013 canonical history/transactional HA outbox, immutable correlation, I7/I9/OTA 합격·증거 경계 |
@@ -145,3 +146,7 @@
 | OTA canary·rollback 운영 절차 | [ota_operations_runbook.md](ota_operations_runbook.md) |
 | Trusted workflow digest Gate와 policy rotation | [trusted_workflow_policy.md](trusted_workflow_policy.md) |
 | 비콘 미감지 신고 대응 | [mobile_app_scan_lifecycle.md](mobile_app_scan_lifecycle.md#9-신고-대응-순서) |
+
+## Dedicated broker operations
+
+- [nas_broker_automation.md](nas_broker_automation.md): owner-requested restricted SSH/sudo gateway, typed private staging, detached activation and retained-container rollback boundaries.

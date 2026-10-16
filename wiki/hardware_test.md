@@ -1340,3 +1340,43 @@ See [access_evidence_recovery.md](access_evidence_recovery.md) for exact hashes 
 | Root and OTA |459 tests,1 environment skip, PASS; OTA contract PASS | Host-only diagnostics tool; no firmware/APK/Backend runtime changes or device command |
 
 Details: [access_evidence_recovery.md](access_evidence_recovery.md#2026-10-15-step-1-sensor-window-attribution).
+
+## 2026-10-15 broker principal isolation staging
+
+- Real loopback Mosquitto2.1.2 pinned by digest reproduces legacy global-pattern writes from HA/Backend/diagnostic users into their own pseudo Target namespaces. No production message was published.
+- Candidate explicit ACL/renderer passes21 focused tests, including6 renderer regressions,5 opt-in actual-broker methods and10 Target security/OTA contracts. Actual delivery barriers cover anonymous/wrong-password rejection, legitimate own-Target/Backend/HA/diagnostic paths and cross-role/Target read/write denial.
+- Public strict-TLS anonymous CONNECT remains accepted; immediately disconnected with no subscribe/publish/will/control. Private SSH server key matches the existing NAS pin, but owner public-key authentication is rejected. Live image/credential/config/rollback/cutover evidence remains unverified; no deployment or operating change claimed.
+- Full local regression and hosted checks are recorded in the append-only log/PR. Runbook: [broker_security_migration.md](broker_security_migration.md).
+
+## 2026-10-16 final broker candidate validation
+
+- Local full root472 tests PASS/one environment skip with real-broker opt-in enabled; existing Target-security CI entry point independently executes12 renderer/actual-broker child tests with no skips. OTA contract PASS.
+- Added actual retained discovery delivery to a late HA subscriber. Test-only ordered barriers/observer remain outside generated production grants; isolated containers are removed.
+- Candidate is source/staging evidence only. Exact live-image/credential/client compatibility, secure installation, anonymous-session eviction, reconnect/rollback and public/private operating acceptance remain pending under328. No production deployment or door/Target command.
+
+## 2026-10-16 corrected CI tier and final broker-source validation
+
+- Final local root473 tests PASS/1 environment skip and OTA contract PASS. Separate OTA-tier/manual-walkthrough13 tests PASS/1 deliberate broker skip; Backend CI remains required to execute the actual12-case renderer/broker matrix with no skips.
+- Docker's daemon allocates test ports atomically and returned mapping must be127.0.0.1. This avoids the fixture bind/close/start window; no production listener is changed.
+- Tailscale/8822 authentication with the restricted Backend key returns deployed5053a3a/loopback/public passed; source administrative owner-key authentication is still rejected. No live broker inventory/change or issue closure is implied.
+
+
+## 2026-10-16 actual broker snapshot and dependent-client inventory
+
+| Check | Result | Boundary |
+|---|---|---|
+| Live immutable image/version | Matches isolated Mosquitto2.1.2 regression | Candidate source validation, no installed ACL |
+| Original config/TLS snapshot | Root-private0700/0600 backup, hashes verified; config unchanged on readback | Restore/config activation not exercised |
+| Backend configured identity | Distinct username/nonempty password, TLS route | Actual installed Target credential agreement remains unproved |
+| Dependent clients | Running anonymous legacy Telegraf subscription; stored anonymous HA config without running HA container/local upstream | All-client inventory/current HA use not established |
+| Broker activation | Not performed; both listeners still anonymous | Legacy-client scope or separation, provisioning, rollback, eviction/reconnect and independent readback pending |
+
+No Target command, reboot, OTA trigger, relay action or physical success is inferred. [Migration runbook](broker_security_migration.md).
+
+## 2026-10-16 combined broker policy isolation
+
+- Schema1 unchanged; strict schema2 adds distinct single-SmartBox and read-only Telegraf roles. Focused31 tests PASS with real-broker opt-in; owning Target-security entrypoint independently runs the actual19-case renderer/shared-broker matrix.
+- Actual broker tests cover all20 SmartBox discovery topics, six telemetry/event delivery paths, read-only collector denials, HA command/device receive, cross-project and unknown namespace refusal. Isolated fixtures only; no production command.
+- Subscribe-only live SmartBox observation receives fresh non-retained telemetry plus retained current-main version. Anonymous strict-TLS HEAD obtains the existing firmware artifact; origin protection and installed credentials remain operating prerequisites.
+
+- Final full root480 tests/1environment skip and OTA contract PASS, with actual19-case child broker matrix. Earlier fixture deadline failures were corrected and are not counted as successful runs.
