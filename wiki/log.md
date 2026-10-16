@@ -7843,3 +7843,24 @@
 - Independently inspect immutable PR442 featureb836d7e: all23 protected blob modes/inventories remain exact. Only Backend trusted-input inventory digest changes to e9080dbfcd8c76d874cb908ae7e238481070f8668e4c87b84bb77902693f6852, adding the HA operator and its backend-discovered tests; other22 inputs unchanged.
 - Separate policy-only transition pins that reviewed feature as the sole persistent source. Regression constants retain exact predecessor/admitted inventory bytes; no arbitrary digest bypass. Policy merge, ancestry-preserving feature merge-connect and final exact-head checks remain required.
 - Backend feature hosted tests pass; OTA/trusted failures are the expected unadmitted protected inventory. No NAS HA/broker change, key expansion or device command by this admission.
+
+## [2026-10-16] compile | Merge guarded device-network updater and rollout evidence
+
+- SmartBoxPR8 merged after exact-head hosted native/origin/target CI38826365345 PASS; source-only updater and private immutable operator launcher are ready. Gatekeeper evidencePR440 mergedc8cb880 after trusted-policy PASS. Both repositories have no open PR at this checkpoint.
+- Native13, Python12 and ESP32-C6 local gates PASS. Administrator application of update-ota-network.sh remains pending because nginx lies outside the six fixed broker commands. No broker cutover or second SmartBox OTA request before that protected route changes and is verified.
+
+
+## [2026-10-16] code | Prepare private HA MQTT adoption before broker cutover
+
+- Previous goal turn made authoritative progress: SmartBoxe0323a0 installation/reconnect/fresh IDLE and authenticated WAN OTA check succeed; temporary bootstrap cleanup and independent outside checks pass. Both installed versions bind a new isolated16-case broker candidate; live broker remains anonymous.
+- Fresh owner-readable HA storage has one enabled MQTT schema2.1 entry, no credentials, file0644/root and directory0777/root. Source account adoption protects the directory0700 before atomically writing root0600 credentials from the existing private staged bundle.
+- New fixed HA operator preserves the existing container/image/mount/network/restart policy, snapshots configuration privately, stops/starts only that HA container and requires fresh exact-client/username broker log plus HTTPS HA readiness. Pre-cutover named connection is explicitly not authentication proof.
+- Initial failure restores the managed settings and permission order, preserves unrelated HA updates, refuses concurrent identity overwrite and keeps storage private on conflict. A300s independent watchdog handles interrupted adoption. A600s read-only observer can verify fresh HA reconnect only after actual new authenticated broker/current-stage bindings.
+- Local19 HA tests (one real pinned Mosquitto MQTTv5 connection, password refusal, parser/rollback/privacy/watchdog cases) and existing isolated broker/container rollback tests pass. Broader Backend373 PASS/skip7 after extending trusted-input inventory; OTA contract suite passed. Final source/CI/operator capture still pending; no HA runtime change or broker apply.
+
+
+## [2026-10-16] fix | Refuse destructive HA container stop modes
+
+- Separate policyPR443/608c977 passes trusted-base38909569843 and merges825057e. Feature merges main preserving b836d7e ancestry and unchanged protected bytes. Initial Backend CI passed; prior OTA/trusted failures matched only the unadmitted inventory.
+- Review identifies Docker AutoRemove as a stop-time deletion risk. Require AutoRemove=false before any HA stop, alongside exact running container/image/mount/root-process checks. Add wrong-network/user/container/image regression checks. All21 HA tests PASS including actual Mosquitto; no live HA/broker change.
+- Existing private captured operator is refreshed to the same approved scope and latest reviewed source bytes. No persistent key authority, HA restart policy or device action change.

@@ -112,6 +112,8 @@
     "protocol/test_vectors/v1.json",
     "security/mosquitto.conf",
     "security/target-acl",
-    "tests/test_target_security_ota.py"
+    "tests/test_target_security_ota.py",
+    "ops/ha_mqtt_adoption.py",
+    "backend/tests/test_ha_mqtt_adoption.py"
   ]
 }

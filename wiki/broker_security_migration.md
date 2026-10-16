@@ -162,3 +162,14 @@ unchanged. Do not bind the old SmartBox version to authorize a premature cutover
 After installed health: supply exact prepared versions, restage16 cases, then
 activate/verify bounded rollback, legitimate reconnect and independent refusal.
 HA remains absent; no HA reconnect, physical access or whole328 completion claim.
+
+
+## 2026-10-16 HA private credential adoption
+
+SmartBox0.1.0-ge0323a0 is installed with fresh reconnect/IDLE and an authenticated remote version check after early bootstrap closure. Independent pre/post outside authentication and cleanup pass. Current Target525 and SmartBoxe0323a0 bind a newly staged16-case candidate. HA is running and reachable again, but its MQTT entry has no account; parent328 remains open.
+
+[HA adoption helper](../ops/ha_mqtt_adoption.py) is a separate administrator invocation; it does not expand the permanent six-command SSH key. It uses the existing root-private staged credentials and exact input/config hashes, requires the existing running root HA/container binding, and retains the installed image and restart policy. Existing storage is root-owned0777/file0644: the helper stops HA, backs up its final snapshot, protects the directory0700, writes root0600 account data, and restarts that same container.
+
+Acceptance requires a fresh exact MQTT client/username connection record and HTTPS HA readiness. On initial failure, restore managed settings and modes only after credential removal; preserve unrelated HA changes and refuse concurrent identity overwrite. An independent300s watchdog recovers interrupted adoption. Successful adoption leaves named credentials/private storage installed and observes up to600s for a later authenticated-broker reconnect. That later audit requires a changed broker container, two anonymous=false directives, current file hash/stage bindings and a new HA connection since broker start. It does not itself apply broker settings.
+
+Pre-cutover username transmission on an anonymous broker is not authentication proof. No physical commands are sent. HA restart policy/stop-cause issue441 remains separate; user-only administrator authentication is required for this helper because the dedicated key has no HA editing authority.
