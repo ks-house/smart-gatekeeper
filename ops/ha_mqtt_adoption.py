@@ -184,9 +184,8 @@ def started(original):
 
 
 def http_ready(origin):
-    context = ssl.create_default_context()
-    with urllib.request.urlopen(origin, timeout=8, context=context) as response:
-        return response.status == 200
+    status, _ = docker.https_response(origin)
+    return status == 200
 
 
 def log_binding(configuration, broker):

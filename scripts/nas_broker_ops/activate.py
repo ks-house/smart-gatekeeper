@@ -22,6 +22,8 @@ PRIVATE=Path("/volume1/smart-gatekeeper-broker-private")
 DOCKER="/usr/local/bin/docker"
 SOCKET="/var/run/docker.sock"
 NAMES={"mosquitto","telegraf"}
+NAS_SELF_HOST="tworimpa.synology.me"
+NAS_SELF_HTTPS_PORTS=(4123,4442)
 
 
 def atomic(path, text, uid=0, gid=0, mode=0o600):
@@ -228,15 +230,46 @@ def observe(stage,versions,require_idle):
     return json.loads(result.stdout)
 
 
+class LocalNASHTTPS(http.client.HTTPSConnection):
+    """Keep the public certificate/SNI/Host identity on the local NAS route."""
+    def connect(self):
+        self.sock=socket.create_connection(("127.0.0.1",self.port),timeout=self.timeout)
+        self.sock=self._context.wrap_socket(self.sock,server_hostname=self.host)
+
+
+def https_response(url,limit=1048576):
+    parsed=urllib.parse.urlsplit(url)
+    if parsed.scheme!="https" or parsed.username is not None or parsed.password is not None:
+        raise ValueError("verified HTTPS origin required")
+    context=ssl.create_default_context()
+    if parsed.hostname==NAS_SELF_HOST and parsed.port in NAS_SELF_HTTPS_PORTS:
+        connection=LocalNASHTTPS(parsed.hostname,parsed.port,timeout=8,context=context)
+        try:
+            target=parsed.path or "/"
+            if parsed.query:target+="?"+parsed.query
+            connection.request("GET",target,headers={"Host":parsed.netloc})
+            response=connection.getresponse();raw=response.read(limit+1)
+            status=response.status
+        finally:
+            connection.close()
+    else:
+        request=urllib.request.Request(url,method="GET")
+        with urllib.request.urlopen(request,timeout=8,context=context) as response:
+            status=response.status;raw=response.read(limit+1)
+    if len(raw)>limit:
+        raise RuntimeError("bounded HTTPS response required")
+    return status,raw
+
+
 def ready():
     configuration=json.loads((OPS/"config.json").read_text())
     url=configuration["readiness_url"]
     parsed=urllib.parse.urlsplit(url)
     if parsed.scheme!="https" or parsed.username is not None or parsed.path!="/ready" or parsed.query:
         raise ValueError("invalid fixed readiness route")
-    request=urllib.request.Request(url,method="GET")
-    with urllib.request.urlopen(request,timeout=10,context=ssl.create_default_context()) as response:
-        data=json.loads(response.read(1048576))
+    status,raw=https_response(url)
+    if status!=200:raise RuntimeError("independent readiness HTTP did not pass")
+    data=json.loads(raw)
     if data.get("status") not in ("ready","ok") or not all(data.get("checks",{}).values()):
         raise RuntimeError("independent readiness did not pass")
     return {"readiness_passed":True,"build_sha":data.get("build_sha")}

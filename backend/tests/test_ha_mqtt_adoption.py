@@ -1266,5 +1266,84 @@ class DockerDaemonRecoveryTest(unittest.TestCase):
             m.recover(runtime,prepared,lambda value:None)
         self.assertEqual(1,runtime.restarts);self.assertEqual(0,runtime.forced)
 
+
+class LocalNasVerifiedHttpsTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import subprocess
+        cls.tmp=tempfile.TemporaryDirectory()
+        cls.certificates={}
+        for hostname in ["tworimpa.synology.me","wrong.example"]:
+            base=Path(cls.tmp.name)/hostname
+            cert=base.with_suffix(".crt");key=base.with_suffix(".key")
+            subprocess.run(["openssl","req","-x509","-newkey","rsa:2048","-nodes",
+                "-days","1","-subj","/CN="+hostname,"-addext","subjectAltName=DNS:"+hostname,
+                "-keyout",str(key),"-out",str(cert)],check=True,capture_output=True,timeout=20)
+            cls.certificates[hostname]=(cert,key)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def serve(self,hostname="tworimpa.synology.me",payload=b'{"status":"ready"}'):
+        import ssl,threading,http.server
+        seen=[]
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen.append(("host",self.headers.get("Host")))
+                self.send_response(200);self.send_header("Content-Length",str(len(payload)))
+                self.end_headers();self.wfile.write(payload)
+            def log_message(self,*args):pass
+        server=http.server.ThreadingHTTPServer(("127.0.0.1",0),Handler)
+        context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        cert,key=self.certificates[hostname];context.load_cert_chain(str(cert),str(key))
+        context.set_servername_callback(lambda socket,name,ctx:seen.append(("sni",name)))
+        server.socket=context.wrap_socket(server.socket,server_side=True)
+        thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        self.addCleanup(server.server_close);self.addCleanup(server.shutdown)
+        return server,seen,cert
+
+    def test_real_https_uses_loopback_with_original_sni_host_and_certificate_verification(self):
+        import ssl
+        m=load().docker;server,seen,cert=self.serve()
+        context=ssl.create_default_context(cafile=str(cert))
+        with patch.object(m,"NAS_SELF_HTTPS_PORTS",(server.server_port,)), \
+             patch.object(m.ssl,"create_default_context",return_value=context):
+            status,raw=m.https_response("https://tworimpa.synology.me:"+str(server.server_port)+"/ready")
+        self.assertEqual(200,status);self.assertEqual({"status":"ready"},json.loads(raw))
+        self.assertIn(("sni","tworimpa.synology.me"),seen)
+        self.assertIn(("host","tworimpa.synology.me:"+str(server.server_port)),seen)
+        self.assertTrue(context.check_hostname);self.assertEqual(ssl.CERT_REQUIRED,context.verify_mode)
+
+    def test_trusted_wrong_hostname_and_untrusted_certificate_are_refused(self):
+        import ssl
+        m=load().docker
+        for hostname,trusted in [("wrong.example",True),("tworimpa.synology.me",False)]:
+            server,seen,cert=self.serve(hostname)
+            context=ssl.create_default_context(cafile=str(cert)) if trusted else ssl.create_default_context()
+            with patch.object(m,"NAS_SELF_HTTPS_PORTS",(server.server_port,)), \
+                 patch.object(m.ssl,"create_default_context",return_value=context), \
+                 self.assertRaises(ssl.SSLCertVerificationError):
+                m.https_response("https://tworimpa.synology.me:"+str(server.server_port)+"/ready")
+            self.assertFalse(any(x[0]=="host" for x in seen))
+
+    def test_oversized_response_is_refused(self):
+        import ssl
+        m=load().docker;server,seen,cert=self.serve(payload=b"x"*1024)
+        context=ssl.create_default_context(cafile=str(cert))
+        with patch.object(m,"NAS_SELF_HTTPS_PORTS",(server.server_port,)), \
+             patch.object(m.ssl,"create_default_context",return_value=context), \
+             self.assertRaisesRegex(RuntimeError,"bounded HTTPS"):
+            m.https_response("https://tworimpa.synology.me:"+str(server.server_port)+"/",limit=128)
+
+    def test_other_origins_keep_normal_https_and_plaintext_is_refused(self):
+        m=load().docker;response=MagicMock()
+        response.__enter__.return_value=response;response.status=200;response.read.return_value=b"{}"
+        with patch.object(m.urllib.request,"urlopen",return_value=response) as request:
+            self.assertEqual((200,b"{}"),m.https_response("https://external.example:4442/ready"))
+            self.assertEqual("https://external.example:4442/ready",request.call_args.args[0].full_url)
+        with self.assertRaisesRegex(ValueError,"verified HTTPS"):
+            m.https_response("http://tworimpa.synology.me:4442/ready")
+
 if __name__ == "__main__":
     unittest.main()
