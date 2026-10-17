@@ -40,14 +40,14 @@
   },
   "approved_bundles": [
     {
-      "id": "private-ota-sftp-input-baseline",
+      "id": "private-sftp-preflight-order-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "cb7372989605e04c0ec2b4342f382c48d46ec327"
+        "commit": "84b300a55de1670a2f846499d3af64a978cea40b"
       },
       "files": {
-        ".github/workflows/backend_security.yml": "782d0dfcb705af027e176f15d9f8329ccaa122b874010e9a4cc6610cc2c239d7",
+        ".github/workflows/backend_security.yml": "bf947f365c7ce5043fed1e8420b5e66cd4954ad699e4a82a2654e4707a8c026e",
         ".github/workflows/build_app.yml": "c19f9e3b6f921acfc2ac6d531b0bafdc43ac02a5aa36c0fc4427bfb18dfd633f",
         ".github/workflows/deploy.yml": "6f2852fa328dcde812ac8553a01b737e685479c4e62a14a296b624ffd061a72c",
         ".github/workflows/ota_contract.yml": "d82e7cf7d09f8b4f59c34ba28675dafbe08ab7ef2d40abdc8d88dd03c7df1a12",

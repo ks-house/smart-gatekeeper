@@ -8074,3 +8074,9 @@
 - Keep exact23 protected paths/seven workflows and trusted validator. Change only five digests as one persistent-baseline source; retain all18 unrelated digests, signing/runtime/SSH/dependency inputs.
 - Update policy transition tests to accept exactly predecessor or reviewed bytes for the five changed inputs; keep source/namespace/mixed-bundle refusal. No policy bypass or candidate code execution in the base trusted check.
 - Admission does not configure OIDC/transport, publish an artifact, restart a service or activate the firewall. Backup461 is owner-deferred.
+
+## [2026-10-17] compile | Admit the isolated private SFTP preflight correction
+
+- Review immutable465 source84b300a55de1670a2f846499d3af64a978cea40b; only Backend workflow digest changes, preserving all23 protected paths and22 unrelated hashes.
+-19 focused actual OpenSSH/selector/failure-receipt tests and29 Backend/NAS contracts PASS. Update predecessor/admitted transition fixture only for the one reviewed input; keep source/mixed-bundle/namespace refusal.
+- No OIDC generation/permission change, transport activation, publication, device command or deferred backup work occurs through this admission.
