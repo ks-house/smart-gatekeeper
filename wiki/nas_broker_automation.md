@@ -131,3 +131,7 @@ See [broker migration](broker_security_migration.md) for the operating gates and
 ## HA adoption before live anonymous refusal
 
 Use the separate captured [HA operator](../ops/ha_mqtt_adoption.py) to protect existing storage and adopt the staged named account on the same installed container/image. The permanent key still permits only six fixed broker commands. The helper retains private backup and guarded rollback; it never sends a Target/SmartBox command. Require its named-connection/readiness receipt before broker apply, then its fresh authenticated reconnect receipt afterward. A username observed while the broker is anonymous is a preparation check only.
+
+## Broker-first coordinated activation
+
+The broker is replaced first and must accept a bounded CONNECT/DISCONNECT with the staged HA principal before the collector starts. The probe uses a unique clean client with no will/subscription/publication; the full post-device/TLS/backend/HA checks remain separate. Collector RestartCount must remain zero. Rollback restores the original broker before its collector. Failed replacement metadata and bounded recent Synology database logs are captured privately before deletion; fixed diagnosis returns only their pointer.

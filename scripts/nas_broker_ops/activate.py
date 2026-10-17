@@ -7,6 +7,7 @@ import json
 import os
 import re
 import socket
+import sqlite3
 import ssl
 import subprocess
 import tempfile
@@ -24,6 +25,7 @@ SOCKET="/var/run/docker.sock"
 NAMES={"mosquitto","telegraf"}
 NAS_SELF_HOST="tworimpa.synology.me"
 NAS_SELF_HTTPS_PORTS=(4123,4442)
+DOCKER_LOG_ROOT=Path("/volume1/@docker/containers")
 
 
 def atomic(path, text, uid=0, gid=0, mode=0o600):
@@ -88,6 +90,96 @@ def copy_create_payload(original,overrides):
     return config
 
 
+def preserve_replacement_diagnostics(name,original_id):
+    """Collect only a replacement's bounded private evidence before rollback."""
+    try:
+        current=inspect(name)
+        if current["Id"]==original_id:return
+        directory=Path(tempfile.mkdtemp(prefix="activation-diagnostic-",dir=str(STATE)))
+        os.chmod(directory,0o700)
+        value={"name":name,"container_id":current["Id"],"image":current["Image"],
+               "state":current["State"],"restart_count":current.get("RestartCount",0),
+               "logging":current["HostConfig"].get("LogConfig"),"log_records":[]}
+        if current["HostConfig"].get("LogConfig",{}).get("Type")=="db":
+            identifier=current["Id"]
+            if re.fullmatch(r"[a-f0-9]{64}",identifier) is None:
+                raise ValueError("bound failed container identity required")
+            path=DOCKER_LOG_ROOT/identifier/"log.db"
+            if path.is_file() and not path.is_symlink() and path.stat().st_uid==0:
+                connection=sqlite3.connect("file:"+str(path)+"?mode=ro",uri=True,timeout=2)
+                try:
+                    connection.execute("PRAGMA query_only=ON")
+                    deadline=time.monotonic()+2
+                    connection.set_progress_handler(lambda:int(time.monotonic()>deadline),1000)
+                    value["log_records"]=connection.execute(
+                        "SELECT c2created,substr(c0text,1,1000) FROM log_content ORDER BY docid DESC LIMIT 200").fetchall()
+                finally:connection.close()
+        atomic(directory/"container.json",json.dumps(value))
+        atomic(STATE/"last-activation-diagnostic.json",json.dumps(
+            {"private_directory":str(directory),"name":name,"container_id":current["Id"]}))
+    except Exception as error:
+        # Evidence failure must not prevent restoring the original service.
+        try:atomic(STATE/"last-activation-diagnostic-error.json",json.dumps({"error_type":type(error).__name__}))
+        except Exception:pass
+
+
+def wait_broker_principal(profile,credentials,endpoint=("127.0.0.1",1883)):
+    username=profile["ha_username"];password=credentials[username]
+    def field(value):
+        raw=value.encode()
+        return len(raw).to_bytes(2,"big")+raw
+    body=(field("MQTT")+bytes([5,194,0,10,0])+field("sgk-activation-"+uuid.uuid4().hex[:12])
+          +field(username)+field(password))
+    remaining=len(body);encoded=bytearray()
+    while True:
+        digit=remaining%128;remaining//=128;encoded.append(digit|(128 if remaining else 0))
+        if not remaining:break
+    packet=bytes([16])+bytes(encoded)+body
+    until=time.monotonic()+30
+    while True:
+        try:
+            with socket.create_connection(endpoint,timeout=1) as stream:
+                stream.settimeout(2);stream.sendall(packet)
+                def exact(count):
+                    value=b""
+                    while len(value)<count:
+                        part=stream.recv(count-len(value))
+                        if not part:raise RuntimeError("bounded MQTT ready response closed")
+                        value+=part
+                    return value
+                if exact(1)!=bytes([32]):raise RuntimeError("MQTT ready CONNACK required")
+                length=0;multiplier=1
+                for index in range(4):
+                    digit=exact(1)[0];length+=(digit&127)*multiplier
+                    if not digit&128:break
+                    multiplier*=128
+                else:raise RuntimeError("bounded MQTT ready response required")
+                if not 3<=length<=256:raise RuntimeError("bounded MQTT ready response required")
+                reply=exact(length)
+                if reply[0]!=0 or reply[1]!=0:
+                    raise RuntimeError("prepared principal was refused before collector start")
+                stream.sendall(bytes([224,0]))
+                return {"prepared_principal_connect_only_verified":True}
+        except OSError:
+            if time.monotonic()>=until:raise RuntimeError("bounded broker readiness deadline before collector")
+            time.sleep(.25)
+
+
+def replace_broker_and_collector(stage,active,client,profile,credentials,prepared):
+    replace_container("mosquitto",{
+        "/mosquitto/config/mosquitto.conf":str(active),"/mosquitto/auth":str(Path(stage["policy_root"]))},
+        prepared,str(stage["broker_uid"])+":"+str(stage["broker_gid"]))
+    readiness=wait_broker_principal(profile,credentials)
+    replace_container("telegraf",{"/etc/telegraf/telegraf.conf":str(client)},prepared)
+    return readiness
+
+
+def restore_transaction(items):
+    # Both forward activation and rollback require the broker before its consumer.
+    for item in sorted(items,key=lambda item:0 if item["original"]=="mosquitto" else 1):
+        restore_container(item)
+
+
 def replace_container(name,overrides,prepared=None,runtime_user=None):
     if name not in NAMES:raise ValueError("unsupported operating container")
     original=inspect(name);payload=copy_create_payload(original,overrides)
@@ -109,6 +201,7 @@ def replace_container(name,overrides,prepared=None,runtime_user=None):
             api("POST","/containers/create?name="+name,payload)
             api("POST","/containers/"+name+"/start")
         except Exception:
+            preserve_replacement_diagnostics(name,original["Id"])
             try:api("DELETE","/containers/"+name+"?force=true")
             except Exception:pass
             api("POST","/containers/"+backup+"/rename?name="+name)
@@ -143,6 +236,7 @@ def restore_container(item):
         return
     if old["Id"]!=item["original_id"] or old["Image"]!=item["original_image"]:
         raise RuntimeError("retained rollback identity drift")
+    preserve_replacement_diagnostics(name,item["original_id"])
     try:api("DELETE","/containers/"+name+"?force=true")
     except RuntimeError:
         # Proceed only if the replacement is already absent.
@@ -322,10 +416,7 @@ def activate():
         replaced.append(item)
         atomic(STATE/"pending.json",json.dumps(transaction))
     try:
-        replace_container("telegraf",{"/etc/telegraf/telegraf.conf":str(client)},prepared)
-        replace_container("mosquitto",{
-            "/mosquitto/config/mosquitto.conf":str(active),"/mosquitto/auth":str(policy)},prepared,
-            str(stage["broker_uid"])+":"+str(stage["broker_gid"]))
+        broker_readiness=replace_broker_and_collector(stage,active,client,profile,credentials,prepared)
         observe(stage,expected,False);health=ready()
         collector_state=inspect("telegraf")
         if collector_state["State"]["Status"]!="running" or collector_state.get("RestartCount",0):
@@ -337,9 +428,9 @@ def activate():
         atomic(STATE/"current.json",json.dumps(current))
         (STATE/"pending.json").unlink()
         return {"authenticated_policy_installed":True,"old_sessions_evicted":True,**health,
-                "ha_client_reconnect_verified":False}
+                **broker_readiness,"ha_client_reconnect_verified":False}
     except Exception:
-        for item in reversed(replaced):restore_container(item)
+        restore_transaction(replaced)
         if (STATE/"pending.json").exists():(STATE/"pending.json").unlink()
         raise
 
@@ -349,7 +440,7 @@ def rollback():
     pending=STATE/"pending.json"
     if not path.exists() and not pending.exists():raise ValueError("no activation to restore")
     current=json.loads((pending if pending.exists() else path).read_text())
-    for item in reversed(current["containers"]):restore_container(item)
+    restore_transaction(current["containers"])
     previous=current["previous_state"]
     if previous is None:
         if path.exists():path.unlink()
