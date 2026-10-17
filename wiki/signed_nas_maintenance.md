@@ -21,3 +21,5 @@ The private signer and SSH key remain only in the operator's owner-private WSL c
 The current first use is a read-only comparison of Synology Docker log query variants, followed by a reviewed operator-code update if evidence identifies a compatibility defect. Keep the existing HA preparation and broker authentication gates; do not bypass a missing notice or disable anonymity prematurely.
 
 The local signer and NAS verifier both use OpenSSL RSA3072/SHA256. No cryptography Python package is required. Hosted CI exercises real signatures.
+
+2026-10-17: PR449 merged34867e7f after all hosted gates passed. Persistent setup-signed-maintenance.sh is captured from merged bytes. Dedicated-key authentication is not yet accepted; first administrator registration remains pending. This grants signed root-code execution, not a code sandbox.

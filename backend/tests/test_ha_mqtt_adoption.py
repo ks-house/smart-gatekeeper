@@ -1024,5 +1024,103 @@ with tempfile.TemporaryDirectory(prefix='ha-fixed-key-fixture-') as tmp:
         self.assertEqual(0, result.returncode, result.stderr[-2500:])
         self.assertIn("signed_maintenance_install_preservation_and_registration_rollback_passed=true", result.stdout)
 
+
+class BrokerPrivateLogFileTest(unittest.TestCase):
+    load_gateway = FixedHaGatewayTest.load_gateway
+
+    def test_existing_private_log_is_preserved_and_unsafe_files_refused(self):
+        m = self.load_gateway()
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp);directory.chmod(0o555)
+            path = directory/"mosquitto.log"
+            directory.chmod(0o755);path.write_bytes(b"existing-evidence");path.chmod(0o600)
+            directory.chmod(0o555)
+            broker = {"Mounts": [{"Destination": "/mosquitto/log", "Source": str(directory), "RW": True}]}
+            text = "log_dest file /mosquitto/log/mosquitto.log\n"
+            try:
+                with patch.object(m, "BROKER_LOG", path):
+                    result = m.ensure_broker_log(text, broker, os.getuid(), os.getgid())
+                    self.assertFalse(result["created"]);self.assertEqual(b"existing-evidence", path.read_bytes())
+                    path.chmod(0o644)
+                    with self.assertRaisesRegex(ValueError, "private broker-owned"):
+                        m.ensure_broker_log(text, broker, os.getuid(), os.getgid())
+                    path.chmod(0o600)
+                    with self.assertRaisesRegex(ValueError, "bound broker log mount"):
+                        m.ensure_broker_log(text, {"Mounts": []}, os.getuid(), os.getgid())
+                    self.assertEqual(0o555, stat.S_IMODE(directory.stat().st_mode))
+            finally:
+                directory.chmod(0o755)
+
+@unittest.skipUnless(os.getenv("RUN_HA_PREFLIGHT_DOCKER") == "1", "real read-only log directory recovery opt-in")
+class ActualReadOnlyBrokerLogRecoveryTest(unittest.TestCase):
+    def test_missing_file_suppresses_stdout_notice_until_private_file_and_hup(self):
+        import subprocess,time,socket,uuid
+        from tests.test_broker_acl_integration import IMAGE
+        m = load()
+        name = "sgk-log-recovery-"+uuid.uuid4().hex[:10]
+        def docker(*args):
+            return subprocess.check_output(["docker", *args], text=True, stderr=subprocess.STDOUT, timeout=25)
+        with tempfile.TemporaryDirectory(prefix="sgk-log-recovery-") as tmp:
+            directory = Path(tmp);logs = directory/"log";logs.mkdir();logs.chmod(0o555)
+            config = directory/"mosquitto.conf"
+            text = ("listener 1883\nallow_anonymous true\npersistence false\nconnection_messages true\n"
+                    "log_dest stdout\nlog_dest file /mosquitto/log/mosquitto.log\n"
+                    "log_type error\nlog_type warning\nlog_type notice\n"
+                    "log_timestamp_format %Y-%m-%dT%H:%M:%S\n")
+            config.write_text(text)
+            held = None
+            try:
+                docker("run", "--rm", "-d", "-t", "--name", name, "--user",
+                       str(os.getuid())+":"+str(os.getgid()), "--entrypoint", "mosquitto",
+                       "-p", "127.0.0.1::1883", "-v", str(directory)+":/fixtures:ro",
+                       "-v", str(logs)+":/mosquitto/log", IMAGE, "-c", "/fixtures/mosquitto.conf")
+                time.sleep(.5)
+                before = json.loads(docker("inspect", name))[0]
+                self.assertTrue(before["State"]["Running"])
+                port = int(docker("port", name, "1883/tcp").strip().rsplit(":", 1)[1])
+                def connect():
+                    identifier = "fixture-log-"+uuid.uuid4().hex[:12]
+                    def field(value):
+                        raw = value.encode();return len(raw).to_bytes(2,"big")+raw
+                    body = field("MQTT")+bytes([5,130,0,10,0])+field(identifier)+field(identifier)
+                    since = time.time();sock = socket.create_connection(("127.0.0.1",port),timeout=3)
+                    sock.sendall(bytes([16,len(body)])+body)
+                    reply = b""
+                    while len(reply)<5:reply += sock.recv(128)
+                    self.assertEqual(0, reply[3])
+                    return sock,identifier,since
+                held, identifier, since = connect()
+                time.sleep(.2)
+                self.assertFalse(m.named_connection(docker("logs","--timestamps",name),identifier,since,identifier))
+                image = docker("image","inspect","python:3.12.13-slim-bookworm","--format","{{.Id}}").strip()
+                code = (
+                    "import importlib.util,json,os,pathlib\n"
+                    "s=importlib.util.spec_from_file_location('g','/repo/scripts/nas_ha_ops/ha_ops.py')\n"
+                    "g=importlib.util.module_from_spec(s);s.loader.exec_module(g)\n"
+                    "g.BROKER_LOG=pathlib.Path('/fixtures/log/mosquitto.log')\n"
+                    "b={'Mounts':[{'Destination':'/mosquitto/log','Source':'/fixtures/log','RW':True}]}\n"
+                    "r=g.ensure_broker_log("+repr(text)+",b,"+str(os.getuid())+","+str(os.getgid())+")\n"
+                    "assert r['created'] and (g.BROKER_LOG.stat().st_mode&0o777)==0o600\n"
+                    "print(json.dumps(r))\n")
+                result = subprocess.run(["docker","run","--rm","-i","--read-only","--network","none",
+                    "--user","0:0","-v",str(directory)+":/fixtures","-v",str(ROOT)+":/repo:ro",
+                    "--entrypoint","python",image,"-B","-I","-"],input=code,capture_output=True,text=True,timeout=25)
+                self.assertEqual(0,result.returncode,result.stderr[-2000:])
+                self.assertEqual(0o555,stat.S_IMODE(logs.stat().st_mode))
+                self.assertEqual(text,config.read_text())
+                docker("kill","--signal","HUP",name);time.sleep(.4)
+                after = json.loads(docker("inspect",name))[0]
+                self.assertEqual(before["Id"],after["Id"])
+                self.assertEqual(before["State"]["StartedAt"],after["State"]["StartedAt"])
+                held.sendall(bytes([192,0]));self.assertEqual(bytes([208,0]),held.recv(2))
+                with_socket, identifier, since = connect()
+                with_socket.sendall(bytes([224,0]));with_socket.close();time.sleep(.2)
+                self.assertTrue(m.named_connection(docker("logs","--timestamps",name),identifier,since,identifier))
+                self.assertGreater((logs/"mosquitto.log").stat().st_size,0)
+            finally:
+                if held:held.close()
+                subprocess.run(["docker","rm","-f",name],capture_output=True)
+                logs.chmod(0o755)
+
 if __name__ == "__main__":
     unittest.main()
