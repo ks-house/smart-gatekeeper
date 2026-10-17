@@ -980,7 +980,7 @@ def _validated_ota_transport_job(path: str, job: dict[str, Any], anchor: str,
       "PUBLIC_NAS_PORT": "${{ secrets.NAS_PORT || 22 }}",
       "PUBLIC_NAS_KNOWN_HOSTS": "${{ secrets.NAS_KNOWN_HOSTS }}",
       "TAILNET_NAS_HOST": "${{ vars.NAS_OTA_TAILNET_HOST }}",
-      "TAILNET_NAS_PORT": "${{ vars.NAS_OTA_TAILNET_PORT || 8822 }}",
+      "TAILNET_NAS_PORT": "${{ vars.NAS_OTA_TAILNET_PORT || 4222 }}",
       "TS_OIDC_CLIENT_ID": "${{ secrets.TS_OIDC_CLIENT_ID }}",
       "TS_OIDC_AUDIENCE": "${{ secrets.TS_OIDC_AUDIENCE }}",
   }
@@ -995,7 +995,7 @@ def _validated_ota_transport_job(path: str, job: dict[str, Any], anchor: str,
       or join.get("with") != {
           "oauth-client-id": "${{ secrets.TS_OIDC_CLIENT_ID }}",
           "audience": "${{ secrets.TS_OIDC_AUDIENCE }}",
-          "tags": "tag:sgk-github-deploy",
+          "tags": "tag:sgk-github-ota",
           "version": "1.94.2",
           "sha256sum": "c6f99a5d774c7783b56902188d69e9756fc3dddfb08ac6be4cb2585f3fecdc32",
       }):

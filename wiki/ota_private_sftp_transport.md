@@ -23,22 +23,26 @@ Personal Target and mobile publishers gain an opt-in transport selector:
 
 Only the two exact-main personal publisher jobs receive contents:read and
 id-token:write. Their main-only personal-auto-ota environment and non-cancelling
-concurrency remain. The pinned Tailscale action, client version/hash and deploy
-tag match the existing Backend integration. An exact selector body, environment
+concurrency remain. The pinned Tailscale action and client version/hash match the existing Backend
+integration; a separate tag:sgk-github-ota is proposed for NAS SFTP TCP4222 only.
+The existing Backend tag:sgk-github-deploy and management SSH8822 stay unchanged. An exact selector body, environment
 map, conditional join and routing consumers are validated before the legacy
 signing/publication contracts are checked; unexpected extensions still fail.
 
 ## Read-only operating preflight
 
-The existing exact-main Backend manual status job keeps its production
-environment approval and ephemeral Tailscale identity. A new explicit input,
-verify_ota_sftp (defaultfalse), optionally checks the existing publisher password
-identity over the already pinned private NAS endpoint.
+The exact-main Backend manual status job keeps its production environment,
+management SSH8822 and existing ephemeral Tailscale role. It runs when
+verify_ota_sftp=false (the default). A separate exact-main job runs only when
+verify_ota_sftp=true, under personal-auto-ota with the publisher account,
+separate tag:sgk-github-ota and SFTP4222. It never receives Backend SSH keys.
 
-The SFTP batch contains only cd/pwd for the Target and APK directories. It does
-not upload, download, rename, remove, publish, deploy or command a device.
-Raw client diagnostics remain in a private runner file; the retained receipt
-contains only private_sftp_readonly_ok=true after success.
+The new job forces private selection and reuses the exact tested publisher
+selector/pinned join. Its batch contains only cd/pwd for Target, primary APK
+and fallback APK directories. It cannot upload, download, rename, remove,
+publish, deploy or command a device. Raw client diagnostics stay private;
+the always-retained receipt contains a start marker and, only after success,
+private_sftp_readonly_ok=true. Failures retain only a closed category/exit code.
 
 This preflight proves private authentication/directory traversal, not writer
 permission, atomic promotion or device install. Full private publication and
@@ -46,20 +50,19 @@ HTTPS readback remain separate gates.
 
 ## Activation order
 
-1. Review the source and separately admit the five changed protected inputs:
-   backend_security.yml, build_app.yml, deploy.yml, ota_contract.yml and
-   scripts/ota_contract_gate.py. Keep the exact23-path policy inventory.
-2. On tested main, dispatch Backend security and MariaDB with
-   verify_ota_sftp=true; approve only the normal existing protected environment
-   job. Keep public publishing and the current firewall state during this test.
-3. Confirm the existing Tailscale workload identity can authenticate the
-   personal-auto-ota subject for this exact repository/deploy tag. If it does
-   not already permit that subject, obtain explicit owner authorization for the
-   narrow identity addition. Do not weaken production approval or mint a broad
-   persistent credential.
-4. Configure the personal-auto-ota TS_OIDC_CLIENT_ID/TS_OIDC_AUDIENCE and
-   NAS_OTA_TAILNET_HOST/NAS_OTA_TAILNET_PORT. Set OTA_PUBLISH_TRANSPORT=tailscale
-   only after private preflight succeeds and the identity is ready.
+1. Review and separately admit the four changed protected inputs:
+   backend_security.yml, build_app.yml, deploy.yml and scripts/ota_contract_gate.py.
+   Keep the exact23-path policy inventory and the existing signing/readback gates.
+2. Obtain action-time owner approval for the new tag/network grant and OIDC
+   identity. Proposed grant: tag:sgk-github-ota -> sgk-nas-deploy TCP4222 only.
+   Proposed subject: repo:ks-house/smart-gatekeeper:environment:personal-auto-ota;
+   require repository_id1281428181 and ref refs/heads/main. Scope auth_keys only,
+   no devices/policy/user administration. Leave the production identity unchanged.
+3. Configure personal-auto-ota TS_OIDC_CLIENT_ID/TS_OIDC_AUDIENCE and
+   NAS_OTA_TAILNET_HOST/NAS_OTA_TAILNET_PORT4222, then dispatch
+   verify_ota_sftp=true on reviewed main. Keep current public publishing/firewall
+   state during this read-only authentication and directory test.
+4. Set OTA_PUBLISH_TRANSPORT=tailscale only after the private preflight succeeds.
 5. Verify both actual signed publication/readback paths. Retain public access
    until publication has passed; a successful HTTPS download alone is insufficient.
 6. Reapply the reviewed SSH boundary and independently verify management,
@@ -94,3 +97,19 @@ sanitized status receipt. The raw client text stays private on the runner.
 An always-run artifact step retains this receipt even when SFTP fails; failures
 never gain a success marker.19 focused selector/preflight/real-client/error
 tests and29 Backend/NAS contracts PASS. Live retry remains separate acceptance.
+
+
+## Actual NAS service and role boundary
+
+The corrected-option live run39032386499 still failed (sanitized exit255) at
+management SSH8822. Signed read-only NAS configuration confirms separate
+ssh_port8822 and sftpPort4222. The publisher session is non-admin with nologin;
+the management account is admin. Do not add administrator membership, grant a
+shell, change sshd/PAM, or broaden the existing management tag to solve this.
+
+The current source separates service and role, defaults private publication to
+SFTP4222, and restores diagnostics to a private log with sftp -N. The new tag,
+grant and personal OIDC credential remain uncreated pending owner approval.
+The earlier source/CI passes are not proof of private operating publication.
+Backup461 remains deferred, and the NAS firewall remains at its restored
+original disabled state until private publication and HTTPS readback pass.
