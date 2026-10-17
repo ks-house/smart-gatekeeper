@@ -7902,3 +7902,24 @@
 - Root-owned captured source/configuration hashes, fixed HA/image/stage bindings, detached bounded jobs and root-journaled rollback/verification protect the operation boundary. Installation changes access files only; privileged registration failure restores previous key and complete sudo policy bytes.
 - Use HA's reviewed MQTT endpoint for the connect-only observation marker. Logging recovery validates the unchanged broker/TLS capture on an isolated pinned image, then sends HUP and requires same container/start plus a fresh named record before HA adoption. No account change or anonymous-session eviction is claimed by HUP.
 - Isolated42 tests PASS including actual pinned broker HUP/held-session continuity, mounted archive/root ownership, forced-command/client refusal and root filesystem installation/key preservation/registration rollback. Backend and hosted checks are next; no NAS installation, reload or account adoption by this source preparation.
+
+
+## [2026-10-17] code | Prepare signed NAS maintenance for autonomous operator updates
+
+- User resumes WSL broker-transition goal and includes SmartBox. Correct existing paths are smart-gatekeeper and smartbox; misspelled smar-gatekeeper does not exist. Read both repository instructions/index/recent log and preserve the dirty Gatekeeper primary. SmartBox main is already currente0323a0.
+- Existing HA and broker dedicated keys both succeed. Prior HA adoption/logging jobs are terminal failed at the notice gate, not live waits. Do not restart solely from old receipts or redefine access installation as broker migration completion.
+- Add a separate explicitly privileged signed maintenance role for reviewed root Python diagnostics/code updates. Existing twelve fixed HA/broker operations remain unchanged. Real RSA3072/SHA256 authorization binds code/action/UUID/time/deadline, rejects unsigned inputs and replay, and stores root-owned bounded receipts with private stderr. Initial installation changes access files only and preserves/rolls back existing keys/sudo bytes.
+- Local53 isolated tests PASS, including real RSA tamper/expiry checks, at-most-once replay, actual process timeout, stderr privacy, root installation rollback and the prior real-broker/archive/HA guards. No NAS signed-maintenance authority or code update installed yet; original HA/broker settings remain the last verified state.
+
+
+## [2026-10-17] test | Validate signed maintenance and both WSL project gates
+
+- Final53 isolated HA/access/maintenance cases PASS after signature-before-compilation ordering. Backend407 default cases PASS/12 explicit skips; OTA contract PASS. Protected bundle inventory SHAe9080dbf is unchanged.
+- SmartBox WSL native13 PASS and ESP32-C6 build PASS using example dummy provisioning only (RAM62172B, flash1343884B). The dummy header is removed and generated version header restored. No real credential, artifact publication, OTA or physical movement.
+- Signed maintenance remains uninstalled; prepare the reviewed first registration rather than bypassing the existing six-command key. Full broker transition is not yet achieved.
+
+
+## [2026-10-17] fix | Use deployed OpenSSL signing path in maintenance CI
+
+- Hosted PR449 Backend failed because cryptography was installed locally but absent from the admitted CI runtime. Replace the local signer dependency and test key generation with OpenSSL RSA3072/SHA256; keep real signature, tamper and replay checks mandatory. No workflow or protected dependency inventory change.
+- No NAS authority, account or service change by this source repair.

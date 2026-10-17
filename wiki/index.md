@@ -152,3 +152,5 @@
 - [nas_broker_automation.md](nas_broker_automation.md): owner-requested restricted SSH/sudo gateway, typed private staging, detached activation and retained-container rollback boundaries.
 
 - [nas_ha_automation.md](nas_ha_automation.md): owner-requested dedicated HA key, six fixed operations, root journal verification and one-time installation.
+
+- [signed_nas_maintenance.md](signed_nas_maintenance.md): privileged signed project maintenance, separate signer/transport keys, replay/expiry controls and operating evidence boundaries.
