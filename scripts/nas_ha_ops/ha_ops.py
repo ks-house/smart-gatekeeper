@@ -186,16 +186,19 @@ def diagnose(config, m):
     ha, broker, identity = bindings(config, m)
     result = {"diagnostic_only": True, "settings_changed": False, "containers": {}}
     for name, item in (("homeassistant", ha), ("mosquitto", broker)):
-        conn = m.docker.DockerHTTP("localhost", timeout=10)
-        try:
-            conn.request("GET", "/containers/"+item["Id"]+
-                         "/logs?stdout=1&stderr=1&timestamps=1&tail=3000")
-            response = conn.getresponse();raw = response.read(4*1024*1024+1)
-            if response.status != 200 or len(raw) > 4*1024*1024:
-                raise RuntimeError("bounded diagnostic logs unavailable")
-        finally:
-            conn.close()
-        lines = m.docker_log_text(raw).splitlines()
+        if item["HostConfig"].get("LogConfig", {}).get("Type") == "db":
+            lines = m.database_log_text(item["Id"]).splitlines()
+        else:
+            conn = m.docker.DockerHTTP("localhost", timeout=10)
+            try:
+                conn.request("GET", "/containers/"+item["Id"]+
+                             "/logs?stdout=1&stderr=1&timestamps=1&tail=200")
+                response = conn.getresponse();raw = response.read(4*1024*1024+1)
+                if response.status != 200 or len(raw) > 4*1024*1024:
+                    raise RuntimeError("bounded diagnostic logs unavailable")
+            finally:
+                conn.close()
+            lines = m.docker_log_text(raw).splitlines()
         info = {"running": item["State"]["Running"], "id": item["Id"],
                 "started_at": item["State"]["StartedAt"],
                 "logging": item["HostConfig"].get("LogConfig"),

@@ -154,3 +154,5 @@
 - [nas_ha_automation.md](nas_ha_automation.md): owner-requested dedicated HA key, six fixed operations, root journal verification and one-time installation.
 
 - [signed_nas_maintenance.md](signed_nas_maintenance.md): privileged signed project maintenance, separate signer/transport keys, replay/expiry controls and operating evidence boundaries.
+
+- [docker_log_recovery.md](docker_log_recovery.md): observed Synology db-driver writer lock, bounded read-only SQLite observation and process-preserving Docker daemon recovery.

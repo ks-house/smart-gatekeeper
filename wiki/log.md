@@ -7939,3 +7939,21 @@
 - Read-only query variants disprove a simple tail200 limit explanation. Actual NAS MQTT endpoint is local; same-container bridge and loopback accept CONNECT. Broker UID/GID1883 has no open log file; configured log directory is operator-owned0555 with no mosquitto.log.
 - Exact pinned Mosquitto image reproduces the failure in isolation: absent file in0555 directory emits Unable to open log file, accepts CONNECT but emits no connection notices. Precreating a0600 service-owned file then same-container HUP restores notices without changing config bytes.
 - Add a fixed-destination, bound-mount, no-follow, exclusive-create helper. Preserve directory permissions, never truncate existing logs, reject wrong owner/mode/hardlinks, and require the existing fresh named notice gate after HUP. No operating repair or authentication cutover is claimed yet.
+
+
+## [2026-10-17] test | Verify autonomous root maintenance and recover broker file logging
+
+- Owner completes signed-maintenance registration. Fresh dedicated BatchMode/no-password status succeeds with signer SHAce2f5cd4. Actual signed diagnostics run asUID0; unsigned envelope and shell/extra-path/separator requests are refused. Reviewed HA operator update jobb6d699b7 succeeds with sourceSHA5962543c and root-private original backups, without HA/broker configuration or SSH authority changes.
+- PR450 headfddd96b passes hosted Backend/MariaDB38986963260, OTA38986963650 and trusted38986963202; merged5da0ebe2. All55 opt-in isolated cases PASS; Backend409/13 explicit skips and OTA contract PASS locally. Main source-only Backend38987186987 cancellation is requested before any deployment step.
+- Logging recovery job48101017 creates brokerUID/GID1883 mode0600 file, preserves the0555 directory/config/TLS and same running broker, and sendsHUP. File readback contains the new exact random CONNECT-only marker. Final Docker transport proof times out, so the root job correctly remains FAILED and HA is not stopped/adopted. File recovery is a narrower verified result than complete observation recovery.
+- Root read-only diagnostics confirm the NAS LAN endpoint is local, Docker repliesHTTP200/chunked but neither read nor read1 receives a first body chunk before timeout, and db-driver log.db latest record stays2026-10-16T23:39:37Z. Even explicit follow=false/until does not resolve the query. This does not prove a particular driver root cause; do not assert missing-EOF alone or weaken the fresh connection gate.
+- Broker authentication cutover remains pending: both anonymous directives stilltrue, HA original account/hash6001bb71. No physical command, device reboot or additionalOTA. Further approved diagnosis and code updates now require no administrator prompt.
+
+
+## [2026-10-17] fix | Prepare Docker log writer recovery without restarting project containers
+
+- Previous turn made operating progress: verified signed root maintenance, deployed reviewed log-file repair and recovered actual file notices. Current HA job48101017 is terminal failed at Docker transport; no live adoption is inferred from that old receipt.
+- Read-only /debug/pprof/goroutine confirms abandoned diagnostic tail-all producer blocked on channel send while holding logdb mutex0xc0015ba360; flusher and newer readers wait on the same mutex. This is evidence of an actual writer-lock blockage, not a speculative missing-EOF explanation. Do not repeat that query or restart Docker blindly.
+- All8 containers are Gatekeeper/HA/SmartBox. LiveRestoreEnabled=false. Exact daemon unit KillMode=process/Restart=always/no ExecStop has infinite stop timeout. Root0600 daemon config SHA bb517c25 is captured.
+- Add bounded SQLite mode=ro/query_only latest200-row projection preserving actual Docker UTC and exact named freshness gates. Add prepared process-preserving recovery: only live-restore config addition; installed binary validation; reload/active-setting/unchanged-container checks before a single daemon-unit restart; bounded original-daemon-only force if stuck stopping; exact8-process/readiness/fresh-notice post-checks and no automatic retry.
+- Signed NAS prepare job5ec0983e validates actual candidate and captures8 identities under root planSHA dba6c89d. No global setting/reload/restart by prepare. Software and hosted validation/application remain next.

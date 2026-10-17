@@ -12,6 +12,7 @@ import re
 import signal
 import socket
 import ssl
+import sqlite3
 import stat
 import tempfile
 import tarfile
@@ -31,6 +32,7 @@ REPORTS = Path("/var/run/sgk-broker-audit")
 BROKER_CONFIG = Path("/volume1/docker/mosquitto/config/mosquitto.conf")
 CLIENT_ID = "homeassistant-sgk-20261016"
 MANAGED = ("username", "password", "client_id")
+DOCKER_LOG_ROOT = Path("/volume1/@docker/containers")
 
 
 def digest(raw):
@@ -199,14 +201,16 @@ def log_binding(configuration, broker):
     if formats and formats != ["%Y-%m-%dT%H:%M:%S"]:
         raise ValueError("reviewed broker timestamp format required")
     if re.search(r"(?m)^\s*log_dest\s+stdout\s*$", configuration):
-        return {"docker": True}
+        return {"docker": True, "container_id": broker["Id"],
+                "driver": broker.get("HostConfig", {}).get("LogConfig", {}).get("Type")}
     if formats:
         raise ValueError("formatted broker logs require timestamped Docker stdout")
     files = re.findall(r"(?m)^\s*log_dest\s+file\s+(\S+)\s*$", configuration)
     if len(files) > 1:
         raise ValueError("one bounded broker log required")
     if not files:
-        return {"docker": True}
+        return {"docker": True, "container_id": broker["Id"],
+                "driver": broker.get("HostConfig", {}).get("LogConfig", {}).get("Type")}
     target = Path(files[0])
     if not target.is_absolute() or ".." in target.parts:
         raise ValueError("absolute fixed broker log required")
@@ -237,7 +241,40 @@ def docker_log_text(raw):
     return b"".join(parts).decode("utf-8", "replace")
 
 
+def database_log_text(container_id):
+    # Synology db ReadLogs can retain its writer mutex after an aborted HTTP read.
+    # Query only the bounded latest physical rows, without touching that API.
+    if re.fullmatch(r"[a-f0-9]{64}", container_id) is None:
+        raise ValueError("bound Docker container identity required")
+    path = DOCKER_LOG_ROOT/container_id/"log.db"
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != 0:
+        raise ValueError("root-owned regular Docker log database required")
+    connection = sqlite3.connect("file:"+str(path)+"?mode=ro", uri=True, timeout=2)
+    try:
+        connection.execute("PRAGMA query_only=ON")
+        deadline = time.monotonic()+2
+        connection.set_progress_handler(lambda: int(time.monotonic() > deadline), 1000)
+        rows = connection.execute(
+            "SELECT substr(c0text,1,1001),c2created FROM log_content ORDER BY docid DESC LIMIT 200").fetchall()
+    finally:
+        connection.close()
+    lines = []
+    for text, created in reversed(rows):
+        if not isinstance(text, str) or not isinstance(created, str):
+            raise ValueError("reviewed Docker database row required")
+        if len(text) > 1000:
+            continue  # A truncated unrelated row must never become a valid notice.
+        lines.append(created+" "+text.rstrip("\r\n")+"\n")
+    result = "".join(lines)
+    if len(result.encode()) > 262144:
+        raise ValueError("bounded Docker database log projection required")
+    return result
+
+
 def log_data(binding, since):
+    if binding.get("driver") == "db":
+        return database_log_text(binding["container_id"])
     if "path" in binding:
         path = Path(binding["path"])
         info = path.stat()

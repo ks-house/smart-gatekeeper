@@ -1122,5 +1122,149 @@ class ActualReadOnlyBrokerLogRecoveryTest(unittest.TestCase):
                 subprocess.run(["docker","rm","-f",name],capture_output=True)
                 logs.chmod(0o755)
 
+
+class DockerDatabaseLogTest(unittest.TestCase):
+    def fixture(self, directory):
+        import sqlite3,types
+        m = load();identifier = "a"*64
+        m.DOCKER_LOG_ROOT = Path(directory)
+        root = Path(directory)/identifier;root.mkdir();path = root/"log.db"
+        connection = sqlite3.connect(path)
+        connection.execute("CREATE TABLE log_content(docid INTEGER PRIMARY KEY,c0text,c2created)")
+        connection.commit();connection.close()
+        original = Path.lstat
+        def lstat(p, *args, **kwargs):
+            value = original(p, *args, **kwargs)
+            if p == path:
+                return types.SimpleNamespace(st_uid=0,st_mode=value.st_mode)
+            return value
+        return m,identifier,path,lstat
+
+    def test_real_readonly_sqlite_tail_preserves_utc_identity_and_database(self):
+        import sqlite3,hashlib
+        with tempfile.TemporaryDirectory() as tmp:
+            m,identifier,path,lstat = self.fixture(tmp)
+            connection = sqlite3.connect(path)
+            for i in range(205):
+                text = "1792198000: fixture unrelated"
+                if i == 204:
+                    text = "2026-10-17T00:46:40: New client connected from 127.0.0.1:1234 as "+m.CLIENT_ID+" (p5, c1, k60, u'ha-fixture')."
+                connection.execute("INSERT INTO log_content VALUES(?,?,?)",(i+1,text,"2026-10-17T00:46:40.100000000Z"))
+            connection.commit();connection.close()
+            before = hashlib.sha256(path.read_bytes()).hexdigest()
+            with patch.object(Path,"lstat",lstat), patch.object(m.docker,"DockerHTTP") as http:
+                text = m.log_data({"docker":True,"driver":"db","container_id":identifier},1792198000)
+            http.assert_not_called()
+            self.assertEqual(200,len(text.splitlines()))
+            self.assertTrue(m.named_connection(text,"ha-fixture",1792198000))
+            self.assertFalse(m.named_connection(text,"wrong-user",1792198000))
+            self.assertFalse(m.named_connection(text,"ha-fixture",1792198001))
+            self.assertEqual(before,hashlib.sha256(path.read_bytes()).hexdigest())
+            ro = sqlite3.connect("file:"+str(path)+"?mode=ro",uri=True)
+            with self.assertRaises(sqlite3.OperationalError):
+                ro.execute("DELETE FROM log_content")
+            ro.close()
+
+    def test_invalid_container_owner_and_truncated_rows_never_qualify(self):
+        import sqlite3,types
+        with tempfile.TemporaryDirectory() as tmp:
+            m,identifier,path,lstat = self.fixture(tmp)
+            connection=sqlite3.connect(path)
+            connection.execute("INSERT INTO log_content VALUES(1,?,?)",
+                ("1792198000: New client connected from x as "+m.CLIENT_ID+
+                 " (p5, c1, k60, u'ha-fixture')."+"x"*1100,"2026-10-17T00:46:40Z"))
+            connection.commit();connection.close()
+            with patch.object(Path,"lstat",lstat):
+                self.assertEqual("",m.database_log_text(identifier))
+            with self.assertRaisesRegex(ValueError,"bound Docker"):
+                m.database_log_text("../other")
+            with self.assertRaisesRegex(ValueError,"root-owned regular"):
+                m.database_log_text(identifier)
+
+
+class DockerDaemonRecoveryTest(unittest.TestCase):
+    @staticmethod
+    def module():
+        spec=importlib.util.spec_from_file_location("docker_recovery_test",ROOT/"scripts/nas_maintenance/recover_dockerd.py")
+        m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
+
+    class Runtime:
+        def __init__(self):
+            self.raw=b'{"log-driver":"db","bip":"fixture-only","data-root":"fixture-only"}'
+            self.original=self.raw;self.clock=0;self.enabled=False;self.restarts=0;self.forced=0
+            self.reload_failure=False;self.activation_failure=False;self.hang_stop=False
+            self.after_changed=False;self.never_recovers=False
+            self.values={str(i):{"pid":1000+i,"started_at":"fixture-start","image":"fixture-image",
+                "process_start_ticks":"fixture-ticks","name":"fixture"} for i in range(8)}
+        def configuration(self):
+            return self.raw,{"path":"/fixture/daemon.json","uid":0,"gid":0,"mode":0o600}
+        def service(self):
+            pid=100 if not self.restarts or self.hang_stop and not self.forced or self.never_recovers else 200
+            return {"MainPID":str(pid),"KillMode":"process","Restart":"always","ActiveState":"active",
+                    "ExecStart":"/var/packages/ContainerManager/target/usr/bin/dockerd"}
+        def daemon_identity(self):return {"pid":100,"start_ticks":"fixture","executable":"fixture"}
+        def info(self):
+            return {"ServerVersion":"24.0.2","Swarm":{"LocalNodeState":"inactive"},
+                    "ContainersRunning":8,"LiveRestoreEnabled":self.enabled}
+        def containers(self):
+            import copy
+            result=copy.deepcopy(self.values)
+            if self.restarts and self.after_changed:result["0"]["pid"]=99999
+            return result
+        def validate(self,raw):
+            assert __import__("json").loads(raw)["live-restore"] is True
+        def install(self,raw):self.raw=raw
+        def reload(self):
+            if self.reload_failure:
+                self.reload_failure=False;raise RuntimeError("injected reload refusal")
+            self.enabled=json.loads(self.raw).get("live-restore",False) and not self.activation_failure
+        def restart(self):self.restarts+=1
+        def monotonic(self):return self.clock
+        def sleep(self,seconds):self.clock+=seconds
+        def old_daemon_stopping(self,p):return self.hang_stop and not self.forced
+        def force_stopping_daemon(self,p):self.forced+=1
+        def services(self):return {"ha_http_200":True,"backend_readiness":True}
+        def fresh_notice(self):pass
+
+    def test_live_restore_precedes_single_daemon_restart_and_all_processes_survive(self):
+        m=self.module();runtime=self.Runtime();prepared=m.plan(runtime);events=[]
+        result=m.recover(runtime,prepared,events.append)
+        self.assertEqual(1,runtime.restarts)
+        self.assertEqual(8,result["preserved_container_count"])
+        self.assertTrue(result["fresh_connect_only_notice_verified"])
+        self.assertEqual("live_restore_verified",events[1]["phase"])
+        self.assertEqual("restart_requested",events[2]["phase"])
+
+    def test_reload_or_activation_failure_restores_exact_config_without_restart(self):
+        m=self.module()
+        for fault in ["reload_failure","activation_failure"]:
+            runtime=self.Runtime();prepared=m.plan(runtime);setattr(runtime,fault,True)
+            with self.assertRaises((ValueError,RuntimeError)):
+                m.recover(runtime,prepared,lambda value:None)
+            self.assertEqual(runtime.original,runtime.raw);self.assertEqual(0,runtime.restarts)
+
+    def test_configuration_drift_and_process_changes_are_refused(self):
+        m=self.module();runtime=self.Runtime();prepared=m.plan(runtime)
+        runtime.raw=b'{"changed":true}'
+        with self.assertRaisesRegex(ValueError,"configuration drift"):
+            m.recover(runtime,prepared,lambda value:None)
+        self.assertEqual(0,runtime.restarts)
+        runtime=self.Runtime();prepared=m.plan(runtime);runtime.after_changed=True
+        with self.assertRaisesRegex(ValueError,"container process"):
+            m.recover(runtime,prepared,lambda value:None)
+        self.assertEqual(1,runtime.restarts)
+
+    def test_stalled_daemon_only_has_one_bounded_force_and_no_container_restart(self):
+        m=self.module();runtime=self.Runtime();runtime.hang_stop=True;prepared=m.plan(runtime)
+        result=m.recover(runtime,prepared,lambda value:None)
+        self.assertEqual(1,runtime.restarts);self.assertEqual(1,runtime.forced)
+        self.assertTrue(result["old_daemon_force_required"])
+
+    def test_observation_timeout_does_not_trigger_another_restart(self):
+        m=self.module();runtime=self.Runtime();runtime.never_recovers=True;prepared=m.plan(runtime)
+        with self.assertRaises(TimeoutError):
+            m.recover(runtime,prepared,lambda value:None)
+        self.assertEqual(1,runtime.restarts);self.assertEqual(0,runtime.forced)
+
 if __name__ == "__main__":
     unittest.main()
