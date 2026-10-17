@@ -92,14 +92,28 @@ guard hashes preserved and Backend readiness passes. Both test commands are
 trigger_ota, QoS1/nonretained. No actuator command; no firmware phase or observed
 reboot. Uptime continuity is software evidence, not physical lid/electrical proof.
 
-## Additional finding requiring a separate owner decision
+## Gmail notification recovery accepted
 
-NAS reports an existing Gmail OAuth refresh error; a separate Synology-account
-email route is enabled but email delivery was not verified. New [issue458](https://github.com/ks-house/smart-gatekeeper/issues/458)
-tracks this extra finding. The owner has been asked whether to restore that Gmail
-path. No Google login, token change, email-setting mutation or external test mail
-is performed without that decision. Verified DSM desktop delivery is not email
-delivery proof. The original three issue gates do not silently certify this channel.
+The owner approved restoring the existing Gmail route on2026-10-17.
+[Issue458](https://github.com/ks-house/smart-gatekeeper/issues/458) is resolved after
+same-account reauthentication, outer Email-page Apply and independent persisted
+readback. The sole owner recipient/Warning profile and enabled Synology-account
+route remain; the original subject prefix is restored after DSM's logout reset.
 
-Additional general NAS settings authority is only2026-10-17. Physical/electrical/OEM
-and other project release gates are not closed by these software operating results.
+The initial direct test returned401 and the NAS refresh log reported invalid_grant.
+DNS and verified HTTPS to Google/Synology succeeded. A stale editing session also
+returned Mail.Conf4601. Closing old dialogs and refreshing one Chrome page allowed
+the owner to complete authentication/save/apply; this does not establish the exact
+internal cause of4601.
+
+On2026-10-17 at19:52:22 KST (10:52:22 UTC), a direct-Gmail NAS test message arrived
+in the existing owner's actual Gmail INBOX, with the expected restored subject
+prefix and the same owner as sole recipient. NAS also showed test-send success.
+The private receipt retains message identity and labels; no email address,
+OAuth token, authorization code or private callback is published. Acceptance
+proves current send/delivery, not indefinite future refresh reliability or the
+separate Synology relay's delivery.
+
+No HA, broker, OTA, device, SSH permission or notification-recipient change is made
+by this Gmail work. General NAS settings authority remains limited to2026-10-17.
+Physical/electrical/OEM gates remain separate.

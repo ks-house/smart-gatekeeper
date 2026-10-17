@@ -8024,3 +8024,37 @@
 - HA441 observer is active/enabled with source94705f01/private Btrfs evidence,175 healthy samples/zero failures/empty queue. Failure/recovery testfb0ff5bf is accepted by native DSM and owner UI at15:26:08/09. External HTTP/WSS pass; original stop cause remains unknown despite preserved archives. Email is separate.
 - SmartBox actual357864821 proves attempts2→3→4, manifest200→404→200, VERSION/IDLE, increasing millis and no updater error. Exact temporary rule cleanup/stable hashes and API readiness pass. Versione0323a0/artifact333e23df remain installed/published; no actuator command or firmware install.
 - Source PR455/456/457 and SmartBox15 are merged after checks. Source-only API jobs cancelled; SmartBox redundant main39011920146 cancelled. Additional Gmail OAuth issue458 awaits channel decision; no Google auth or email mutation. Date-limited NAS authority and other physical/OEM gates remain separate.
+
+## [2026-10-17] fix | Diagnose approved Gmail notification recovery
+
+- Owner approves same-account Gmail restoration. Original direct test401 and NAS invalid_grant are confirmed; DNS and verified TLS to Google/Synology succeed.
+- Same-account reauthentication preserves sole owner Warning recipient and enabled Synology relay. Old form save fails Mail.Conf4601; exact cause remains unproven. DSM resets prefix to hostname default at logout; prior prefix retained privately for restoration.
+- After old dialogs close and one Chrome page refreshes, owner reports sender Save success. Independent persisted view still lacks sender; outer Apply/readback and actual owner-inbox test acceptance are pending. No concurrent authentication requests while owner edits.
+- Existing HA/broker/OTA/device state is untouched. No email address, OAuth secret or callback is recorded here. Issue458 stays open; existing desktop proof does not certify email.
+
+## [2026-10-17] fix | Accept Gmail notification restoration with actual inbox delivery
+
+- Owner completes sender Save and outer Email Apply. Fresh NAS readback confirms the existing sender and sole-owner Warning profile. Preserve enabled Synology relay; restore the original subject prefix reset by DSM logout.
+- Agent sends one direct-Gmail NAS test. DSM success dialog and actual owner Gmail INBOX/SENT message at19:52:22KST prove current delivery. Keep message identity in private receipt only; no token, address or callback enters source/GitHub.
+- Resolve issue458 after this delivery evidence. The stale4601 save cause remains unproven; future refresh reliability and separate relay delivery are not inferred. No HA/MQTT/OTA/device or SSH access mutation.
+
+## [2026-10-17] fix | Narrow NAS SSH boundary and refresh remaining stability work
+
+- Fresh root audit confirms API64b5c2f readiness, authenticated MQTT, unchanged HA HTTP200/WSS101 and healthy observer. Existing API/DB/broker/HA restart counts0; database host port is absent.
+- Back up disabled DSM firewall configuration privately and prepare300s automatic rollback. Apply ordered Tailscale/LAN allow, TCP4222/8822 DROP and other-traffic RETURN using DSM. Actual IPv4/IPv6 kernel hooks/order and fresh signed maintenance plus service health pass before watchdog disarm; no key/account/service/device restart.
+- External TCP-check command is blocked by automatic approval review. Keep independent off-LAN refusal and later restart persistence open in#460; same-LAN public-name reachability is not an external result.
+- Register#461 for recurring encrypted off-NAS backup/current restore: observed latest migration SQL2.37GB and115 files/8.79GB. Historical August28 restore is not current proof; no old backup deleted.
+- Private read API returns fresh20:31:19KST verified Target health/boot911 IDLE and zero unsigned queue gap/stall; latest phone report20:30:37KST still advertises45701. Do not close430/426/179 or physical gates from this snapshot.
+- Document the personal-profile priority, preserve prior dirty primary checkout and Gmail recovery records, and validate changed wiki links/diff.
+
+## [2026-10-17] test | Verify latest backup integrity and bound current restore scope
+
+- Read2,370,900,079-byte root-private migration SQL and compare its full SHA256 to the original sidecar: PASS,7.216s total preflight. No backup deletion, service interruption or operating restore.
+- Read-only information_schema metadata reports29 tables and about2.42GB data/index bytes. Mobile diagnostic bundles and Target health history dominate; table_rows are estimates, not exact inventory.
+- Record checksum/permissions separately from current isolated restore and recurring encrypted off-NAS copy, which remain pending in461. Ask the owner for the external backup destination while preserving all current backup/key material.
+
+## [2026-10-17] fix | Restore SSH baseline to preserve existing OTA publication
+
+- Further source audit finds personal Target and mobile publishers still use public NAS_HOST/NAS_PORT SFTP without Tailscale. Candidate SSH denial could therefore block future publication despite healthy existing HTTPS downloads.
+- Signed job22de427d verifies original firewall-disabled baseline, restores that flag and independently confirms disabled state. Keys/accounts/services unchanged; new rules are retained inactive. No failed publication or device action is induced.
+- This publisher route should have been checked before candidate activation. Amend current-state documentation and460: migrate/verify private SFTP first, then reactivate the SSH boundary. Earlier candidate kernel/connection proof remains historical and does not mean current SSH hardening is complete.
