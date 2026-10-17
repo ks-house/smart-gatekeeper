@@ -8087,3 +8087,9 @@
 - Review immutable465 source84b300a55de1670a2f846499d3af64a978cea40b; only Backend workflow digest changes, preserving all23 protected paths and22 unrelated hashes.
 -19 focused actual OpenSSH/selector/failure-receipt tests and29 Backend/NAS contracts PASS. Update predecessor/admitted transition fixture only for the one reviewed input; keep source/mixed-bundle/namespace refusal.
 - No OIDC generation/permission change, transport activation, publication, device command or deferred backup work occurs through this admission.
+
+## [2026-10-17] compile | Admit the separate OTA SFTP service and role
+
+- Review467 frozen sourcefeedb9411ea065032a07847ac4780c0e87635906; update exactly four protected digests while retaining23 paths/seven workflows, trusted validator and19 unrelated inputs.
+- Keep predecessor/admitted transition limited to those four paths; preserve source/namespace/mixed-bundle refusal.131 focused OTA regressions and29 Backend/NAS contracts PASS.
+- This source admission creates no identity/network grant, activates no transport/firewall and publishes no device artifact. Owner access approval and actual private SFTP/publication proof remain separate; backup461 stays deferred.

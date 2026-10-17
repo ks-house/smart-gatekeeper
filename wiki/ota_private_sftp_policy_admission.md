@@ -29,3 +29,19 @@ is pinned to84b300a55de1670a2f846499d3af64a978cea40b. Change only Backend workfl
 and22 other hashes. The actual OpenSSH batch-order regression and closed-category
 failure evidence are the reason for this transition. OIDC scopes, transport
 selection and live publication remain unchanged; backup461 stays deferred.
+
+
+## Separate OTA SFTP service and role admission
+
+Review [PR467](https://github.com/ks-house/smart-gatekeeper/pull/467) frozen
+sourcefeedb9411ea065032a07847ac4780c0e87635906. Admit four changed protected inputs: Backend manual job
+separation, personal Target/mobile SFTP4222/OTA tag, and exact gate expectations.
+Retain all23 protected paths, seven-workflow namespace, trusted validator and
+19 unrelated digests. The production Backend tag/SSH8822 and publication
+signature/atomic/readback contracts stay unchanged.
+
+131 focused OTA/publication regressions,29 Backend/NAS contracts and OTA contract
+PASS. This admission neither creates a Tailscale tag/grant/OIDC credential nor
+activates private transport or changes NAS/device behavior. The owner has only
+completed Tailscale login; final exact access approval remains required.
+Backup461 remains deferred and current public OTA/firewall baseline is preserved.
