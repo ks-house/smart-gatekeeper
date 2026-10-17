@@ -62,7 +62,7 @@ class OtaPublishTransportTest(unittest.TestCase):
             "PUBLIC_NAS_PORT": "4222",
             "PUBLIC_NAS_KNOWN_HOSTS": self.public_pin,
             "TAILNET_NAS_HOST": "100.95.243.92",
-            "TAILNET_NAS_PORT": "8822",
+            "TAILNET_NAS_PORT": "4222",
             "TS_OIDC_CLIENT_ID": "test-identity-never-log",
             "TS_OIDC_AUDIENCE": "test-audience-never-log",
             "GITHUB_OUTPUT": str(work / "output"),
@@ -102,9 +102,9 @@ class OtaPublishTransportTest(unittest.TestCase):
         for result in self.execute({"OTA_PUBLISH_TRANSPORT": "tailscale"}):
             self.assertEqual(result["mode"], "tailscale")
             self.assertEqual(result["host"], "100.95.243.92")
-            self.assertEqual(result["port"], "8822")
+            self.assertEqual(result["port"], "4222")
             parts = result["known_hosts"].split()
-            self.assertEqual(parts[0], "[100.95.243.92]:8822")
+            self.assertEqual(parts[0], "[100.95.243.92]:4222")
             self.assertEqual(parts[1:], self.public_key[:2])
 
     def test_private_port_22_uses_normal_host_label(self):
@@ -131,7 +131,7 @@ class OtaPublishTransportTest(unittest.TestCase):
 
     def test_rejects_unknown_mode_and_invalid_ports_before_output(self):
         self.execute({"OTA_PUBLISH_TRANSPORT": "private-typo"}, success=False)
-        for port in ["0", "65536", "8822\nmode=public", "+8822", "not-a-port"]:
+        for port in ["0", "65536", "4222\nmode=public", "+4222", "not-a-port"]:
             self.execute({"OTA_PUBLISH_TRANSPORT": "tailscale", "TAILNET_NAS_PORT": port}, success=False)
 
     def test_empty_pins_and_injected_host_are_rejected(self):
@@ -151,6 +151,8 @@ class OtaPublishTransportTest(unittest.TestCase):
             self.assertEqual(join["if"], "steps.ota_transport.outputs.mode == 'tailscale'")
             self.assertEqual(join["uses"], "tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8")
             self.assertEqual(join["with"]["version"], "1.94.2")
+            self.assertEqual(join["with"]["tags"], "tag:sgk-github-ota")
+            self.assertEqual(selector["env"]["TAILNET_NAS_PORT"], "${{ vars.NAS_OTA_TAILNET_PORT || 4222 }}")
             self.assertEqual(config["concurrency"]["cancel-in-progress"], False)
             steps = config["steps"]
             after = steps[steps.index(join) + 1:]
@@ -162,16 +164,36 @@ class OtaPublishTransportTest(unittest.TestCase):
             self.assertNotIn("ssh-keyscan", selector["run"])
         self.assertEqual(selectors[0], selectors[1])
 
+    def test_preflight_uses_personal_publisher_role_without_backend_admin_secrets(self):
+        config = job("backend_security.yml", "ota_private_sftp_preflight")
+        self.assertEqual(config["environment"], "personal-auto-ota")
+        self.assertEqual(config["permissions"], {"contents": "read", "id-token": "write"})
+        self.assertIn("inputs.verify_ota_sftp", config["if"])
+        import json
+        rendered = json.dumps(config)
+        for forbidden in ["NAS_DEPLOY_", "sgk-github-deploy", "SSH_PRIVATE_KEY"]:
+            self.assertNotIn(forbidden, rendered)
+        selector = step_named(config, "Select OTA publication transport without fallback")
+        self.assertEqual(selector["env"]["OTA_PUBLISH_TRANSPORT"], "tailscale")
+        published = job("deploy.yml", "publish_personal_target_ota")
+        self.assertEqual(selector["run"], step_named(published, selector["name"])["run"])
+        join = step_named(config, "Join private OTA publisher network")
+        self.assertEqual(join, step_named(published, join["name"]))
+        status = job("backend_security.yml", "nas_private_status_preflight")
+        self.assertIn("!inputs.verify_ota_sftp", status["if"])
+        status_join = step_named(status, "Join NAS status network with an ephemeral Tailscale node")
+        self.assertEqual(status_join["with"]["tags"], "tag:sgk-github-deploy")
+
     def preflight(self, host="100.95.243.92", sftp_success=True, directory="/docker/smartbox_ota/firmware/", client_stderr="", exit_code=42, real_client=False):
-        config = job("backend_security.yml", "nas_private_status_preflight")
+        config = job("backend_security.yml", "ota_private_sftp_preflight")
         step = step_named(config, "Verify existing OTA publisher identity over private SFTP without publishing")
-        self.assertEqual(step["if"], "inputs.verify_ota_sftp")
+        self.assertNotIn("if", step)
         with tempfile.TemporaryDirectory() as temp:
             work = Path(temp)
             (work / "sgk-ssh").mkdir()
             (work / "build").mkdir()
             (work / "sgk-ssh/known_hosts").write_text(
-                "[100.95.243.92]:8822 " + " ".join(self.public_key[:2]) + "\n")
+                "[100.95.243.92]:4222 " + " ".join(self.public_key[:2]) + "\n")
             fake = work / "sshpass"
             if real_client:
                 fake.write_text("#!/usr/bin/env python3\nimport os, sys\nfrom pathlib import Path\nroot = Path(os.environ['RUNNER_TEMP'])\n(root / 'called').write_text('called')\nargs = sys.argv[1:]\nassert args[:2] == ['-e', 'sftp']\nos.execvp('sftp', ['sftp', '-S', str(root / 'fake-ssh')] + args[2:])\n")
@@ -184,13 +206,15 @@ class OtaPublishTransportTest(unittest.TestCase):
             env = {
                 **os.environ,
                 "PATH": str(work) + os.pathsep + str(Path(sys.executable).parent) + os.pathsep + os.environ["PATH"],
-                "RUNNER_TEMP": str(work), "NAS_HOST": host, "NAS_PORT": "8822",
+                "RUNNER_TEMP": str(work), "NAS_HOST": host, "NAS_PORT": "4222",
+                "NAS_KNOWN_HOSTS": "[100.95.243.92]:4222 " + " ".join(self.public_key[:2]) + "\n",
                 "NAS_USER": "test-publisher", "NAS_PASSWORD": "never-log-password",
                 "NAS_TARGET_DIR": directory, "NAS_APK_TARGET_DIR": "/docker/smartbox_ota/gatekeeper_apk",
+                "NAS_APK_FALLBACK_TARGET_DIR": "/docker/smartbox_ota/gatekeeper_apk_fallback",
             }
             run = subprocess.run(["bash", "-euc", step["run"]], cwd=work, env=env,
                                  capture_output=True, text=True, timeout=15)
-            evidence = work / "build/nas-private-status.evidence"
+            evidence = work / "build/ota-private-sftp.evidence"
             captured = evidence.read_text() if evidence.exists() else ""
             batch = work / "sgk-private-sftp-readonly.batch"
             commands = batch.read_text().splitlines() if batch.exists() else []
@@ -205,7 +229,7 @@ class OtaPublishTransportTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertTrue(called)
         self.assertEqual(evidence, "private_sftp_readonly_ok=true\n")
-        self.assertEqual([c.split()[0] for c in commands], ["cd", "pwd", "cd", "pwd"])
+        self.assertEqual([c.split()[0] for c in commands], ["cd", "pwd", "cd", "pwd", "cd", "pwd"])
 
     def test_manual_preflight_failure_produces_no_success_evidence(self):
         rc, evidence, commands, called = self.preflight(sftp_success=False)
@@ -232,7 +256,7 @@ class OtaPublishTransportTest(unittest.TestCase):
                       "Stage read back and atomically publish Target OTA")
             count = 2 if filename == "build_app.yml" else 1
             for mutation in ["unconditional", "unpinned_action", "broader_permissions",
-                             "selector_bypass", "skip_selector", "public_fallback"]:
+                             "selector_bypass", "skip_selector", "public_fallback", "management_tag"]:
                 config = copy.deepcopy(original)
                 selector = step_named(config, "Select OTA publication transport without fallback")
                 join = step_named(config, "Join private OTA publisher network")
@@ -240,6 +264,8 @@ class OtaPublishTransportTest(unittest.TestCase):
                     join["if"] = "always()"
                 elif mutation == "unpinned_action":
                     join["uses"] = "tailscale/github-action@main"
+                elif mutation == "management_tag":
+                    join["with"]["tags"] = "tag:sgk-github-deploy"
                 elif mutation == "broader_permissions":
                     config["permissions"]["contents"] = "write"
                 elif mutation == "selector_bypass":
@@ -308,10 +334,10 @@ class OtaPublishTransportTest(unittest.TestCase):
             self.assertNotIn(message, evidence)
 
     def test_always_upload_keeps_raw_client_diagnostics_private(self):
-        config = job("backend_security.yml", "nas_private_status_preflight")
-        upload = step_named(config, "Upload NAS private status evidence")
+        config = job("backend_security.yml", "ota_private_sftp_preflight")
+        upload = step_named(config, "Upload private OTA SFTP evidence")
         self.assertEqual(upload["if"], "always()")
-        self.assertEqual(upload["with"]["path"], "build/nas-private-status.evidence")
+        self.assertEqual(upload["with"]["path"], "build/ota-private-sftp.evidence")
         self.assertEqual(upload["with"]["if-no-files-found"], "error")
 
 

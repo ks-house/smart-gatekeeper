@@ -8087,3 +8087,11 @@
 - Review immutable465 source84b300a55de1670a2f846499d3af64a978cea40b; only Backend workflow digest changes, preserving all23 protected paths and22 unrelated hashes.
 -19 focused actual OpenSSH/selector/failure-receipt tests and29 Backend/NAS contracts PASS. Update predecessor/admitted transition fixture only for the one reviewed input; keep source/mixed-bundle/namespace refusal.
 - No OIDC generation/permission change, transport activation, publication, device command or deferred backup work occurs through this admission.
+
+## [2026-10-17] fix | Separate private OTA SFTP service and CI role
+
+- Corrected-option main preflight39032386499 still fails with sanitized client255. Root read-only configuration confirms management SSH8822 versus SFTP4222, and non-admin/nologin publisher versus admin maintenance account.
+- Keep account/shell/sshd privileges unchanged. Separate personal-auto-ota read-only preflight from production-protected status; target/mobile private transport defaults to4222 and proposes distinct tag:sgk-github-ota. Status keeps existing tag/SSH8822.
+- Check all three Target/primary APK/fallback directories using only cd/pwd. Reuse exact publisher selector/server pins; private raw diagnostics and closed sanitized failure evidence remain separate.
+- Owner has completed Tailscale login only. No new tag, grant or OIDC credential is created without the concrete final approval. Public transport/firewall baseline and deferred461 remain unchanged.
+-131 focused OTA/selector/atomic publisher tests and29 Backend/NAS contracts PASS; OTA contract command PASS. Correct service proof and actual private publication remain pending; preserve original public route until then.

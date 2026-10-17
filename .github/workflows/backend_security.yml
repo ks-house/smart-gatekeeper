@@ -262,7 +262,7 @@ jobs:
           push-to-registry: true
 
   nas_private_status_preflight:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && !inputs.verify_ota_sftp
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     concurrency:
@@ -313,25 +313,150 @@ jobs:
           ssh "${ssh_options[@]}" "$NAS_USER@$NAS_HOST" status \
             | tee build/nas-private-status.evidence
           test "$(grep -Ec '^status=(not-deployed|deployed)$' build/nas-private-status.evidence)" -eq 1
+      - name: Upload NAS private status evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nas-private-status-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: build/nas-private-status.evidence
+          if-no-files-found: error
+          retention-days: 30
+
+  ota_private_sftp_preflight:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.verify_ota_sftp
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: smart-gatekeeper-personal-ota-preflight
+      cancel-in-progress: false
+    environment: personal-auto-ota
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Prepare private OTA read-only receipt
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p build
+          printf 'private_sftp_readonly_started=true\n' > build/ota-private-sftp.evidence
+      - name: Select OTA publication transport without fallback
+        id: ota_transport
+        env:
+          OTA_PUBLISH_TRANSPORT: tailscale
+          PUBLIC_NAS_HOST: ${{ secrets.NAS_HOST }}
+          PUBLIC_NAS_PORT: ${{ secrets.NAS_PORT || 22 }}
+          PUBLIC_NAS_KNOWN_HOSTS: ${{ secrets.NAS_KNOWN_HOSTS }}
+          TAILNET_NAS_HOST: ${{ vars.NAS_OTA_TAILNET_HOST }}
+          TAILNET_NAS_PORT: ${{ vars.NAS_OTA_TAILNET_PORT || 4222 }}
+          TS_OIDC_CLIENT_ID: ${{ secrets.TS_OIDC_CLIENT_ID }}
+          TS_OIDC_AUDIENCE: ${{ secrets.TS_OIDC_AUDIENCE }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ipaddress
+          import os
+          from pathlib import Path
+          import re
+          import secrets
+          import subprocess
+          import tempfile
+
+          mode = os.environ.get("OTA_PUBLISH_TRANSPORT", "") or "public"
+          if mode not in {"public", "tailscale"}:
+              raise SystemExit("unsupported OTA publication transport")
+          private = mode == "tailscale"
+          prefix = "TAILNET" if private else "PUBLIC"
+          host = os.environ.get(prefix + "_NAS_HOST", "")
+          port = os.environ.get(prefix + "_NAS_PORT", "")
+          known = os.environ.get("PUBLIC_NAS_KNOWN_HOSTS", "")
+          if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", host):
+              raise SystemExit("invalid OTA publisher host")
+          if not re.fullmatch(r"[0-9]{1,5}", port) or not 1 <= int(port) <= 65535:
+              raise SystemExit("invalid OTA publisher port")
+          port = str(int(port))
+          if not known.strip():
+              raise SystemExit("pinned OTA publisher host identity required")
+          if private:
+              try:
+                  address = ipaddress.IPv4Address(host)
+              except ipaddress.AddressValueError:
+                  raise SystemExit("literal Tailscale IPv4 required") from None
+              if address not in ipaddress.IPv4Network("100.64.0.0/10"):
+                  raise SystemExit("OTA publisher is outside Tailscale address range")
+              if not all(os.environ.get(k, "").strip() for k in ("TS_OIDC_CLIENT_ID", "TS_OIDC_AUDIENCE")):
+                  raise SystemExit("private publisher identity is not configured")
+              public_host = os.environ.get("PUBLIC_NAS_HOST", "")
+              public_port = os.environ.get("PUBLIC_NAS_PORT", "")
+              if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", public_host):
+                  raise SystemExit("invalid original publisher identity")
+              if not re.fullmatch(r"[0-9]{1,5}", public_port) or not 1 <= int(public_port) <= 65535:
+                  raise SystemExit("invalid original publisher port")
+              public_port = str(int(public_port))
+              public_label = public_host if public_port == "22" else "[" + public_host + "]:" + public_port
+              private_label = host if port == "22" else "[" + host + "]:" + port
+              with tempfile.NamedTemporaryFile(mode="w+", encoding="utf-8") as pin:
+                  pin.write(known)
+                  pin.flush()
+                  found = subprocess.run(["ssh-keygen", "-F", public_label, "-f", pin.name],
+                                         capture_output=True, text=True, check=False)
+                  if found.returncode:
+                      raise SystemExit("original publisher host pin is missing")
+                  rebound = []
+                  for line in found.stdout.splitlines():
+                      if not line or line.startswith("#"):
+                          continue
+                      parts = line.split()
+                      if len(parts) < 3 or parts[0].startswith("@"):
+                          raise SystemExit("unsupported original publisher host pin")
+                      rebound.append(private_label + " " + parts[1] + " " + parts[2])
+                  if not rebound:
+                      raise SystemExit("original publisher host pin is missing")
+                  known = "\n".join(rebound) + "\n"
+                  pin.seek(0)
+                  pin.truncate()
+                  pin.write(known)
+                  pin.flush()
+                  valid = subprocess.run(["ssh-keygen", "-l", "-E", "sha256", "-f", pin.name],
+                                         capture_output=True, check=False)
+                  if valid.returncode:
+                      raise SystemExit("invalid original publisher host key")
+          values = {"mode": mode, "host": host, "port": port, "known_hosts": known}
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              for key, value in values.items():
+                  marker = "SGK_" + secrets.token_hex(16)
+                  output.write(key + "<<" + marker + "\n" + value + "\n" + marker + "\n")
+          PY
+
+      - name: Join private OTA publisher network
+        if: steps.ota_transport.outputs.mode == 'tailscale'
+        uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OIDC_CLIENT_ID }}
+          audience: ${{ secrets.TS_OIDC_AUDIENCE }}
+          tags: tag:sgk-github-ota
+          version: 1.94.2
+          sha256sum: c6f99a5d774c7783b56902188d69e9756fc3dddfb08ac6be4cb2585f3fecdc32
+
       - name: Install client for opt-in private SFTP read-only preflight
-        if: inputs.verify_ota_sftp
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends openssh-client sshpass
 
       - name: Verify existing OTA publisher identity over private SFTP without publishing
-        if: inputs.verify_ota_sftp
         env:
-          NAS_HOST: ${{ vars.NAS_TAILSCALE_HOST }}
-          NAS_PORT: ${{ vars.NAS_DEPLOY_PORT }}
+          NAS_HOST: ${{ steps.ota_transport.outputs.host }}
+          NAS_PORT: ${{ steps.ota_transport.outputs.port }}
+          NAS_KNOWN_HOSTS: ${{ steps.ota_transport.outputs.known_hosts }}
           NAS_USER: ${{ secrets.NAS_USER }}
           NAS_PASSWORD: ${{ secrets.NAS_PASSWORD }}
           NAS_TARGET_DIR: ${{ secrets.NAS_TARGET_DIR || '/docker/smartbox_ota/firmware/' }}
           NAS_APK_TARGET_DIR: ${{ secrets.NAS_APK_TARGET_DIR }}
+          NAS_APK_FALLBACK_TARGET_DIR: ${{ secrets.NAS_APK_FALLBACK_TARGET_DIR || '/docker/smartbox_ota/gatekeeper_apk_fallback' }}
         run: |
           set -euo pipefail
           umask 077
-          for key in NAS_HOST NAS_PORT NAS_USER NAS_PASSWORD NAS_TARGET_DIR NAS_APK_TARGET_DIR; do
+          for key in NAS_HOST NAS_PORT NAS_USER NAS_PASSWORD NAS_TARGET_DIR NAS_APK_TARGET_DIR NAS_APK_FALLBACK_TARGET_DIR; do
             test -n "${!key}"
           done
           python - <<'PY'
@@ -342,23 +467,26 @@ jobs:
           [[ "$NAS_PORT" =~ ^[0-9]{1,5}$ ]]
           ((10#$NAS_PORT >= 1 && 10#$NAS_PORT <= 65535))
           [[ "$NAS_USER" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$ ]]
-          for directory in "$NAS_TARGET_DIR" "$NAS_APK_TARGET_DIR"; do
+          for directory in "$NAS_TARGET_DIR" "$NAS_APK_TARGET_DIR" "$NAS_APK_FALLBACK_TARGET_DIR"; do
             [[ "$directory" =~ ^/[A-Za-z0-9._/-]{1,300}$ ]]
             [[ "/$directory/" != *"/../"* ]]
           done
+          mkdir -p "${RUNNER_TEMP}/sgk-ssh"
           pin="${RUNNER_TEMP}/sgk-ssh/known_hosts"
+          printf '%s\n' "$NAS_KNOWN_HOSTS" > "$pin"
           label="$NAS_HOST"
           if [[ "$NAS_PORT" != 22 ]]; then label="[$NAS_HOST]:$NAS_PORT"; fi
           ssh-keygen -F "$label" -f "$pin" >/dev/null
           batch="${RUNNER_TEMP}/sgk-private-sftp-readonly.batch"
-          printf 'cd "%s"\npwd\ncd "%s"\npwd\n' "$NAS_TARGET_DIR" "$NAS_APK_TARGET_DIR" > "$batch"
+          printf 'cd "%s"\npwd\ncd "%s"\npwd\ncd "%s"\npwd\n' \
+            "$NAS_TARGET_DIR" "$NAS_APK_TARGET_DIR" "$NAS_APK_FALLBACK_TARGET_DIR" > "$batch"
           export SSHPASS="$NAS_PASSWORD"
           private_log="${RUNNER_TEMP}/sgk-private-sftp-readonly.private"
-          if timeout 60s sshpass -e sftp -q -o BatchMode=no -b "$batch" -P "$NAS_PORT" \
+          if timeout 60s sshpass -e sftp -N -o BatchMode=no -b "$batch" -P "$NAS_PORT" \
               -o ConnectTimeout=15 -o StrictHostKeyChecking=yes \
               -o "UserKnownHostsFile=$pin" "$NAS_USER@$NAS_HOST" > "$private_log" 2>&1; then
             unset SSHPASS NAS_PASSWORD
-            printf 'private_sftp_readonly_ok=true\n' >> build/nas-private-status.evidence
+            printf 'private_sftp_readonly_ok=true\n' >> build/ota-private-sftp.evidence
           else
             export SFTP_EXIT_CODE="$?"
             unset SSHPASS NAS_PASSWORD
@@ -380,7 +508,7 @@ jobs:
               category = "REMOTE_DIRECTORY"
           elif re.search(r"Permission denied", raw, re.I):
               category = "REMOTE_PERMISSION"
-          with Path("build/nas-private-status.evidence").open("a") as evidence:
+          with Path("build/ota-private-sftp.evidence").open("a") as evidence:
               evidence.write("private_sftp_readonly_ok=false\n")
               evidence.write("private_sftp_failure_category=" + category + "\n")
               evidence.write("private_sftp_exit_code=" + str(code) + "\n")
@@ -389,12 +517,12 @@ jobs:
             exit 1
           fi
 
-      - name: Upload NAS private status evidence
+      - name: Upload private OTA SFTP evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: nas-private-status-${{ github.sha }}-attempt-${{ github.run_attempt }}
-          path: build/nas-private-status.evidence
+          name: ota-private-sftp-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: build/ota-private-sftp.evidence
           if-no-files-found: error
           retention-days: 30
 
