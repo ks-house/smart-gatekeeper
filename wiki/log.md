@@ -8081,3 +8081,9 @@
 - Existing production-protected private status/SFTP run39031524098 passes signed status, then fails SFTP without publishing. Actual OpenSSH parser reproduction proves -b before BatchMode=no keeps batchmodeyes and suppresses password authentication; reverse their order.
 - Add a real sftp-to-fake-SSH argument regression and ssh -G effective-mode check with no outbound network. Preserve only closed failure enums/exit code in an always-retained sanitized receipt; keep raw client output private and failed checks unacknowledged.
 -19 focused and29 Backend/NAS tests PASS. No NAS setting, identity grant, publication, device command or deferred backup work performed. Existing Tailscale OIDC is production-subject-only; a personal main/repository-bound draft with auth_keys and existing NAS8822 tag is prepared but not generated pending explicit approval after network preflight.
+
+## [2026-10-17] compile | Admit the isolated private SFTP preflight correction
+
+- Review immutable465 source84b300a55de1670a2f846499d3af64a978cea40b; only Backend workflow digest changes, preserving all23 protected paths and22 unrelated hashes.
+-19 focused actual OpenSSH/selector/failure-receipt tests and29 Backend/NAS contracts PASS. Update predecessor/admitted transition fixture only for the one reviewed input; keep source/mixed-bundle/namespace refusal.
+- No OIDC generation/permission change, transport activation, publication, device command or deferred backup work occurs through this admission.
