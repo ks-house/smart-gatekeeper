@@ -1417,3 +1417,12 @@ No Target command, reboot, OTA trigger, relay action or physical success is infe
 | Backend focused59/full427 (14 opt-in skips) | PASS | Isolated fixtures; no physical actuator |
 | OTA contract suite78 | PASS | Software contract only |
 | Installed HA2026.8.1 callback, four projected payloads/old-template RED | PASS | Separate process, no live event injection; malformed array raises ValueError |
+
+
+### 2026-10-17 HA availability observer software gates
+
+| Test | Result | Boundary |
+|---|---|---|
+| Real TLS/WebSocket and durable alarm/evidence tests12 | PASS | Isolated localhost fixtures |
+| Backend439,14 explicit opt-in skips | PASS | No production failure injection |
+| NAS candidate actual HA HTTP200/WSS101/auth_required | PASS | Read-only candidate; no observer install or notification |

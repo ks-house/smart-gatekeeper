@@ -1437,5 +1437,257 @@ class ActualBrokerPrincipalReadinessTest(unittest.TestCase):
         finally:
             fixture.close()
 
+def load_health_monitor():
+    spec = importlib.util.spec_from_file_location(
+        "ha_health_test", ROOT / "scripts/nas_ha_health/monitor.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class HAHealthObserverTest(unittest.TestCase):
+    def setUp(self):
+        self.m = load_health_monitor()
+        self.config = {"schema_version": 1, "container_id": "a" * 64,
+                       "image": "sha256:" + "b" * 64, "origin": self.m.ORIGIN,
+                       "owner": "noty00", "interval_seconds": 30}
+        self.container = {"id": "a" * 64, "image": "sha256:" + "b" * 64,
+                          "running": True, "restart_policy": "unless-stopped"}
+        self.health = {"http_status": 200, "websocket_status": 101, "auth_required": True}
+
+    def test_owner_origin_and_private_file_bindings(self):
+        self.assertEqual(self.config, self.m.validate_config(self.config))
+        for key, value in [("owner", "@administrators"), ("origin", "http://localhost/"),
+                           ("interval_seconds", True), ("container_id", "../other")]:
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                self.m.validate_config({**self.config, key: value})
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "target"
+            self.m.atomic(target, {"private": True})
+            self.assertEqual(0o600, stat.S_IMODE(target.stat().st_mode))
+            alias = root / "alias"
+            alias.symlink_to(target)
+            with self.assertRaises(ValueError):
+                self.m.regular(alias)
+            with self.assertRaises(ValueError):
+                self.m.journal(alias, {})
+
+    def test_http_healthy_but_websocket_failed_is_failure(self):
+        self.assertEqual([], self.m.reasons(self.config, self.container, self.health))
+        self.assertEqual(["websocket_unavailable"], self.m.reasons(
+            self.config, self.container, {**self.health, "auth_required": False}))
+        self.assertIn("container_not_running", self.m.reasons(
+            self.config, {**self.container, "running": False}, self.health))
+        self.assertIn("container_identity_changed", self.m.reasons(
+            self.config, {**self.container, "image": "sha256:" + "c" * 64}, self.health))
+
+    def test_durable_alarm_retry_and_recovery_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            emitted = []
+            def notifier(value):
+                emitted.append(value["phase"])
+                return len(emitted) != 1
+            def cycle(health, now):
+                return self.m.run_cycle(
+                    self.config, root, observe=lambda _: self.container,
+                    ingress=lambda _: health, events=lambda *_: [],
+                    notifier=notifier, now=now)
+            first = cycle({}, 100)
+            self.assertFalse(first.get("alert_open", False))
+            failure = cycle({}, 130)
+            self.assertTrue(failure["alert_open"])
+            self.assertEqual(1, len(failure["pending"]))
+            self.assertEqual(failure, json.loads(self.m.regular(root / "state.json")))
+            retried = cycle({}, 160)
+            self.assertEqual([], retried["pending"])
+            self.assertTrue(cycle(self.health, 190)["alert_open"])
+            recovered = cycle(self.health, 220)
+            self.assertFalse(recovered["alert_open"])
+            self.assertEqual(["failure", "failure", "recovered"], emitted)
+
+    def test_lifecycle_collector_failure_is_not_silent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            def failed(*_):
+                raise TimeoutError("fixture")
+            for now in (100, 130):
+                value = self.m.run_cycle(
+                    self.config, Path(directory), observe=lambda _: self.container,
+                    ingress=lambda _: self.health, events=failed,
+                    notifier=lambda _: False, now=now)
+            self.assertTrue(value["alert_open"])
+            self.assertIn("lifecycle_observation_unavailable",
+                          value["pending"][0]["reasons"])
+
+    def test_persist_failure_prevents_unrecorded_notification(self):
+        with tempfile.TemporaryDirectory() as directory:
+            notifier = MagicMock()
+            with patch.object(self.m, "atomic", side_effect=OSError("full")):
+                with self.assertRaises(OSError):
+                    self.m.run_cycle(
+                        self.config, Path(directory), observe=lambda _: None,
+                        ingress=lambda _: {}, events=lambda *_: [],
+                        notifier=notifier, now=100)
+            notifier.assert_not_called()
+
+    def test_private_journal_rotation_and_symlink_refusal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            current = root / "observations.jsonl"
+            current.write_bytes(b"{}\n" * 333334)
+            current.chmod(0o600)
+            self.m.journal(root, {"at": 123})
+            self.assertTrue((root / "observations.jsonl.1").is_file())
+            self.assertEqual({"at": 123}, json.loads(current.read_text()))
+            current.unlink()
+            current.symlink_to(root / "observations.jsonl.1")
+            with self.assertRaises(ValueError):
+                self.m.journal(root, {"at": 124})
+
+    def test_owner_notification_is_exact_non_shell_argv(self):
+        notice = {"phase": "failure", "incident": "a" * 16}
+        with patch.object(self.m.subprocess, "run", return_value=MagicMock(returncode=0)) as run:
+            self.assertTrue(self.m.notify_owner(notice, test=True))
+        args = run.call_args.args[0]
+        self.assertEqual(self.m.NOTIFIER, args[0])
+        self.assertEqual("noty00", args[-3])
+        self.assertIn("[진단 시험]", args[-2])
+        self.assertNotIn("@administrators", args)
+        self.assertNotIn("shell", run.call_args.kwargs)
+
+    def test_docker_events_keep_only_bound_lifecycle_metadata(self):
+        event = {"id": self.config["container_id"], "Action": "die",
+                 "timeNano": 123, "time": 1,
+                 "Actor": {"Attributes": {"exitCode": "137", "signal": "9",
+                                          "private_label": "never-serialize"}}}
+        with patch.object(self.m, "docker_read", return_value=json.dumps(event).encode()) as read:
+            result = self.m.lifecycle_events(self.config, 1, 2)
+        self.assertEqual("137", result[0]["exit_code"])
+        self.assertNotIn("never-serialize", json.dumps(result))
+        self.assertIn("until=2", read.call_args.args[0])
+        event["id"] = "c" * 64
+        with patch.object(self.m, "docker_read", return_value=json.dumps(event).encode()):
+            with self.assertRaises(ValueError):
+                self.m.lifecycle_events(self.config, 1, 2)
+
+
+class HAHealthTLSFixture:
+    def __init__(self, certificate, key, mode="ok"):
+        import socket
+        import ssl
+        import threading
+        self.socket = socket.socket()
+        self.socket.bind(("127.0.0.1", 0))
+        self.socket.listen(4)
+        self.socket.settimeout(5)
+        self.port = self.socket.getsockname()[1]
+        self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        self.context.load_cert_chain(certificate, key)
+        self.mode = mode
+        self.thread = threading.Thread(target=self.serve, daemon=True)
+
+    def serve(self):
+        import base64
+        import hashlib
+        import ssl
+        for _ in range(2):
+            try:
+                raw, _peer = self.socket.accept()
+                raw.settimeout(3)
+                stream = self.context.wrap_socket(raw, server_side=True)
+            except (OSError, ssl.SSLError):
+                continue
+            with stream:
+                request = bytearray()
+                try:
+                    while b"\r\n\r\n" not in request and len(request) < 16384:
+                        part = stream.recv(4096)
+                        if not part:
+                            break
+                        request.extend(part)
+                    if b"Upgrade: websocket" not in request:
+                        stream.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+                        continue
+                    key = next(line.split(b":", 1)[1].strip() for line in bytes(request).split(b"\r\n")
+                               if line.startswith(b"Sec-WebSocket-Key:"))
+                    accept = base64.b64encode(hashlib.sha1(
+                        key + b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest())
+                    if self.mode == "bad_accept":
+                        accept = b"wrong"
+                    header = (b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
+                              b"Connection: keep-alive,Upgrade\r\nSec-WebSocket-Accept: " + accept + b"\r\n\r\n")
+                    payload = json.dumps({"type": "auth_required" if self.mode != "bad_protocol" else "other"}).encode()
+                    stream.sendall(header + bytes([0x81, len(payload)]) + payload)
+                except (OSError, StopIteration):
+                    pass
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, *_):
+        self.socket.close()
+        self.thread.join(timeout=6)
+
+
+class HAHealthTLSProbeTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import shutil
+        import subprocess
+        if not shutil.which("openssl"):
+            raise unittest.SkipTest("OpenSSL TLS fixtures required")
+        cls.directory = tempfile.TemporaryDirectory()
+        root = Path(cls.directory.name)
+        cls.cert, cls.key = root / "cert.pem", root / "key.pem"
+        subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+                        "-keyout", str(cls.key), "-out", str(cls.cert), "-days", "1",
+                        "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost"],
+                       capture_output=True, check=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        if hasattr(cls, "directory"):
+            cls.directory.cleanup()
+
+    def probe(self, mode="ok", host="localhost", trust=True):
+        import ssl
+        m = load_health_monitor()
+        context = ssl.create_default_context(cafile=str(self.cert)) if trust else ssl.create_default_context()
+        with HAHealthTLSFixture(self.cert, self.key, mode) as server:
+            return m.ingress_observation("https://" + host + ":" + str(server.port) + "/", context=context)
+
+    def test_real_verified_http_and_websocket_protocol(self):
+        result = self.probe()
+        self.assertEqual(200, result["http_status"])
+        self.assertEqual(101, result["websocket_status"])
+        self.assertTrue(result["auth_required"])
+
+    def test_wrong_hostname_and_untrusted_ca_refused(self):
+        for options in ({"host": "127.0.0.1"}, {"trust": False}):
+            with self.subTest(options=options):
+                result = self.probe(**options)
+                self.assertIsNone(result["http_status"])
+                self.assertFalse(result["auth_required"])
+                self.assertEqual(2, len(result["errors"]))
+
+    def test_invalid_handshake_and_non_ha_protocol_refused(self):
+        for mode in ("bad_accept", "bad_protocol"):
+            with self.subTest(mode=mode):
+                result = self.probe(mode=mode)
+                self.assertEqual(200, result["http_status"])
+                self.assertIsNone(result["websocket_status"])
+                self.assertFalse(result["auth_required"])
+
+    def test_tls_bypass_context_refused(self):
+        import ssl
+        m = load_health_monitor()
+        context = ssl._create_unverified_context()
+        with self.assertRaises(ValueError):
+            m.ingress_observation("https://localhost/", context=context)
+
+
 if __name__ == "__main__":
     unittest.main()

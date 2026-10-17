@@ -160,3 +160,5 @@
 - [broker_cutover_2026_10_17.md](broker_cutover_2026_10_17.md): authenticated shared broker acceptance and remaining gates.
 
 - [ha_remaining_work_2026_10_17.md](ha_remaining_work_2026_10_17.md): HA447/441 and SmartBox7 follow-up acceptance and evidence boundaries.
+
+- [ha_availability_monitor.md](ha_availability_monitor.md): fixed-owner HA HTTP/WebSocket/lifecycle observer, durable evidence and notification gates.
