@@ -28,3 +28,5 @@ Broker cutover/rollback remains on the existing broker client. If a failed cutov
 Operating recovery2026-10-17: file creation and exact fresh CONNECT notice in the private log are verified. Docker db transport still returns headers then times out, so the guarded refresh job fails its final gate and HA adoption/cutover remains pending. Do not retry HUP blindly or claim a particular database transport cause.
 
 See [Docker log recovery](docker_log_recovery.md) for bounded Synology SQLite observation and the process-preserving daemon recovery plan.
+
+NAS self-health: only the pinned NAS public host/HTTPS ports4123/4442 use loopback transport, preserving public SNI/Host and default CA/hostname verification. External HTTPS origins remain unchanged. Actual candidate checks pass; public MQTT observer is unchanged.

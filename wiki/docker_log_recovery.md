@@ -45,9 +45,25 @@ CONNECT-only notice. Failed reload before restart restores exact previous config
 bytes. A restart observation timeout is incomplete evidence and never causes an
 automatic second restart.
 
-The NAS preparation already validates its candidate and captures the exact eight
-processes under a root-private plan; global settings/services remain unchanged.
-Runtime recovery and authenticated broker cutover are still pending.
+Operating recovery2026-10-17: dockerd now runs as PID22352 with live restore
+enabled. A separate read-only observation proves all eight original processes
+survived that daemon restart and fresh notices reach the database again. The
+original recovery job fails on its NAS self-origin HTTP check and is not reported
+as a complete success.
+
+A live-restored database endpoint lost its DNS alias registration. A subsequent
+API restart alone did not restore that database alias; network reregistration
+failed on staleeth0. A controlled DB restart kept its exact container, image and
+persistent data mount and restored the alias. API and DB processes therefore
+changed during these explicit follow-ups; the other six remained running.
+External HA/backendHTTP200 and all12 backend readiness checks are verified.
+Authenticated broker cutover remains pending.
+
+NAS self-origin HTTPS health probes now use the pinned local route while retaining
+the original public SNI/Host and normal certificate chain/hostname verification.
+Actual candidate probes pass both4123/4442 and operator readiness. Public
+MQTT4883 observation already works and is unchanged. Container process survival
+alone must never substitute for network/DNS/application readiness.
 
 References: [Docker live restore](https://docs.docker.com/engine/daemon/live-restore/),
 [recovery source](../scripts/nas_maintenance/recover_dockerd.py),
