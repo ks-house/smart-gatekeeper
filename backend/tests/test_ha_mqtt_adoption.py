@@ -1553,7 +1553,10 @@ class HAHealthObserverTest(unittest.TestCase):
         args = run.call_args.args[0]
         self.assertEqual(self.m.NOTIFIER, args[0])
         self.assertEqual("noty00", args[-3])
-        self.assertIn("[진단 시험]", args[-2])
+        self.assertEqual("DSMSupportFormCustomMessage", args[-2])
+        variables = json.loads(args[-1])
+        self.assertEqual({"%CUSTOM_MSG%"}, set(variables))
+        self.assertIn("[진단 시험]", variables["%CUSTOM_MSG%"])
         self.assertNotIn("@administrators", args)
         self.assertNotIn("shell", run.call_args.kwargs)
 

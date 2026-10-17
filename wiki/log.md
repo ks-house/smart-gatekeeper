@@ -8006,3 +8006,14 @@
 - Add a separate fixed-origin/owner root observer: HTTP plus real verified TLS WebSocket/HA protocol, bounded finite Docker lifecycle events, persistent volume1 private rotating evidence, two-sample failure/recovery and durable owner-only DSM notification retries. No HA/Docker/device repair, broad log query or credential read.
 - Twelve focused actual TLS/privacy/queue/filesystem tests and full Backend439/14 explicit skips PASS. Actual NAS candidate preflight021c8c58 succeeds with zero errors and no alert/service install. First candidate refused an incorrect origin constant before mutation; bind measured HA4123.
 - Preserved recorder/Container Manager evidence bounds unknown original termination rather than inventing a cause. New monitoring installation/notification delivery and independent external proof remain next. Current NAS setting authority stays limited to2026-10-17.
+
+## [2026-10-17] fix | Use DSM7 native desktop notification content format
+
+- Monitor PR45673f6b2c passes Backend39007794214/OTA39007794212/trusted39007794229 and merges8d4bcc64. Redundant source-only Backend39007952806 is cancelled; product API64b5c2f remains deployed.
+- Actual observer installation81b3b73a succeeds with sourceSHA2a6bc806/unit69c1effe, active/enabled PID12103 and private Btrfs state. Initial systemd219 --now/--value compatibility failures restore only observer files; HA image/start remains untouched.
+- Alarm intent/retry collection works, but real DSM7 rejects plain title/body strings. Official resource API and installed generic DSMSupportFormCustomMessage/%CUSTOM_MSG% confirm a supported desktop format. Native owner-only test65f4fcc6 returns0 and logged-in noty00 UI shows the labeled message.
+- Correct notifier/test to native key plus exact variable JSON; preserve recipient, severity, incident tag and durable retry. No vendor resource, global notification preference or external recipient change. Existing Gmail OAuth warning is separately surfaced to owner; a channel choice is pending.
+
+## [2026-10-17] test | Validate DSM notification adapter correction
+
+- Twelve focused tests and Backend439/14 explicit skips PASS after native mail-key correction. Actual generic native message call succeeds and owner UI renders it; a real observer failure/recovery test remains pending deployment of this adapter.
