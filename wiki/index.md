@@ -167,4 +167,6 @@
 
 - [stability_checkpoint_2026_10_17.md](stability_checkpoint_2026_10_17.md): current personal health, OTA-preserving rollback of an SSH candidate, and remaining private-SFTP/backup/phone acceptance.
 
+- [ota_private_sftp_transport.md](ota_private_sftp_transport.md): opt-in pinned Tailscale OTA publishing, unchanged public default and explicit read-only private SFTP preflight; operating activation pending.
+
 - [ota_private_sftp_policy_admission.md](ota_private_sftp_policy_admission.md): separate admission for the reviewed private-OTA five-input transition;23 protected paths and operating gates retained.

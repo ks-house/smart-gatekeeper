@@ -949,6 +949,81 @@ PERSONAL_TARGET_HTTPS_ENV = {
 }
 
 
+# The optional transport prefix is admitted as an exact, separately tested
+# extension. Canonicalizing only these two checked steps lets the unchanged
+# signing/staging/readback contracts continue to validate both N and N-1 jobs.
+OTA_TRANSPORT_SELECTOR_SHA256 = "b17c7262bd771f97529719c8a1517c1a4410c9626bd180ab915619a78a8eab88"
+
+
+def _validated_ota_transport_job(path: str, job: dict[str, Any], anchor: str,
+                                 route_count: int) -> dict[str, Any]:
+  names = ["Select OTA publication transport without fallback",
+           "Join private OTA publisher network"]
+  steps = job.get("steps")
+  if not isinstance(steps, list):
+    return job
+  matches = [step for step in steps if isinstance(step, dict) and step.get("name") in names]
+  if not matches:
+    return job
+  if len(matches) != 2 or [step.get("name") for step in matches] != names:
+    raise GateError(f"{path}: private OTA transport steps must be unique and ordered")
+  selector, join = matches
+  index = steps.index(selector)
+  if (steps[index:index + 2] != matches or index + 2 >= len(steps)
+      or steps[index + 2].get("name") != anchor):
+    raise GateError(f"{path}: private OTA transport must immediately precede NAS publication")
+  if job.get("permissions") != {"contents": "read", "id-token": "write"}:
+    raise GateError(f"{path}: private OTA publisher permissions must be exact")
+  expected_env = {
+      "OTA_PUBLISH_TRANSPORT": "${{ vars.OTA_PUBLISH_TRANSPORT || 'public' }}",
+      "PUBLIC_NAS_HOST": "${{ secrets.NAS_HOST }}",
+      "PUBLIC_NAS_PORT": "${{ secrets.NAS_PORT || 22 }}",
+      "PUBLIC_NAS_KNOWN_HOSTS": "${{ secrets.NAS_KNOWN_HOSTS }}",
+      "TAILNET_NAS_HOST": "${{ vars.NAS_OTA_TAILNET_HOST }}",
+      "TAILNET_NAS_PORT": "${{ vars.NAS_OTA_TAILNET_PORT || 8822 }}",
+      "TS_OIDC_CLIENT_ID": "${{ secrets.TS_OIDC_CLIENT_ID }}",
+      "TS_OIDC_AUDIENCE": "${{ secrets.TS_OIDC_AUDIENCE }}",
+  }
+  if (set(selector) != {"name", "id", "env", "run"} or selector.get("id") != "ota_transport"
+      or selector.get("env") != expected_env
+      or hashlib.sha256(str(selector.get("run", "")).encode()).hexdigest()
+      != OTA_TRANSPORT_SELECTOR_SHA256):
+    raise GateError(f"{path}: exact non-fallback OTA selector required")
+  if (set(join) != {"name", "if", "uses", "with"}
+      or join.get("if") != "steps.ota_transport.outputs.mode == 'tailscale'"
+      or join.get("uses") != "tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8"
+      or join.get("with") != {
+          "oauth-client-id": "${{ secrets.TS_OIDC_CLIENT_ID }}",
+          "audience": "${{ secrets.TS_OIDC_AUDIENCE }}",
+          "tags": "tag:sgk-github-deploy",
+          "version": "1.94.2",
+          "sha256sum": "c6f99a5d774c7783b56902188d69e9756fc3dddfb08ac6be4cb2585f3fecdc32",
+      }):
+    raise GateError(f"{path}: private OTA network join must be exact and conditional")
+  canonical = json.loads(json.dumps(job))
+  canonical.pop("permissions")
+  canonical["steps"] = canonical["steps"][:index] + canonical["steps"][index + 2:]
+  routes = 0
+  for step in canonical["steps"][index:]:
+    env = step.get("env", {})
+    if "NAS_HOST" not in env:
+      continue
+    routes += 1
+    for key, selected, legacy in [
+        ("NAS_HOST", "${{ steps.ota_transport.outputs.host }}", "${{ secrets.NAS_HOST }}"),
+        ("NAS_PORT", "${{ steps.ota_transport.outputs.port }}", "${{ secrets.NAS_PORT || 22 }}"),
+        ("NAS_KNOWN_HOSTS", "${{ steps.ota_transport.outputs.known_hosts }}", "${{ secrets.NAS_KNOWN_HOSTS }}"),
+    ]:
+      if key not in env:
+        continue
+      if env[key] != selected:
+        raise GateError(f"{path}: private OTA route cannot bypass selected transport")
+      env[key] = legacy
+  if routes != route_count:
+    raise GateError(f"{path}: private OTA route consumer count must be exact")
+  return canonical
+
+
 def _validate_personal_target_ota_job(
     path: str,
     build_job_name: str,
@@ -966,6 +1041,7 @@ def _validate_personal_target_ota_job(
   job = jobs.get(PERSONAL_TARGET_PUBLISH_JOB)
   if not isinstance(job, dict):
     raise GateError(f"{path}: exact-main personal Target OTA job is required")
+  job = _validated_ota_transport_job(path, job, "Stage read back and atomically publish Target OTA", 1)
   if set(compile_job) != {"name", "needs", "if", "environment", "runs-on", "steps"}:
     raise GateError(f"{path}: personal Target compile job keys must be exact")
   if compile_job.get("name") != "Build exact-main personal Target firmware with runtime inputs":
@@ -1570,6 +1646,7 @@ def _validate_personal_mobile_ota_job(
   job = jobs.get(PERSONAL_MOBILE_PUBLISH_JOB)
   if not isinstance(job, dict):
     raise GateError(f"{path}: exact-main personal mobile OTA job is required")
+  job = _validated_ota_transport_job(path, job, "Prepare strict NAS host identity for personal mobile OTA", 2)
   if set(unsigned_job) != {"name", "needs", "if", "runs-on", "steps"}:
     raise GateError(f"{path}: unsigned personal mobile OTA job keys must be exact")
   if unsigned_job.get("name") != (

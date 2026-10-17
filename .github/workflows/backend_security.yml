@@ -2,6 +2,12 @@ name: Backend security and MariaDB
 
 on:
   workflow_dispatch:
+    inputs:
+      verify_ota_sftp:
+        description: Verify existing OTA publisher SFTP reads over Tailscale without publishing
+        type: boolean
+        required: false
+        default: false
   pull_request:
     paths:
       - 'backend/**'
@@ -307,6 +313,56 @@ jobs:
           ssh "${ssh_options[@]}" "$NAS_USER@$NAS_HOST" status \
             | tee build/nas-private-status.evidence
           test "$(grep -Ec '^status=(not-deployed|deployed)$' build/nas-private-status.evidence)" -eq 1
+      - name: Install client for opt-in private SFTP read-only preflight
+        if: inputs.verify_ota_sftp
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends openssh-client sshpass
+
+      - name: Verify existing OTA publisher identity over private SFTP without publishing
+        if: inputs.verify_ota_sftp
+        env:
+          NAS_HOST: ${{ vars.NAS_TAILSCALE_HOST }}
+          NAS_PORT: ${{ vars.NAS_DEPLOY_PORT }}
+          NAS_USER: ${{ secrets.NAS_USER }}
+          NAS_PASSWORD: ${{ secrets.NAS_PASSWORD }}
+          NAS_TARGET_DIR: ${{ secrets.NAS_TARGET_DIR || '/docker/smartbox_ota/firmware/' }}
+          NAS_APK_TARGET_DIR: ${{ secrets.NAS_APK_TARGET_DIR }}
+        run: |
+          set -euo pipefail
+          umask 077
+          for key in NAS_HOST NAS_PORT NAS_USER NAS_PASSWORD NAS_TARGET_DIR NAS_APK_TARGET_DIR; do
+            test -n "${!key}"
+          done
+          python - <<'PY'
+          import ipaddress, os
+          address = ipaddress.IPv4Address(os.environ["NAS_HOST"])
+          assert address in ipaddress.IPv4Network("100.64.0.0/10"), "Tailscale IPv4 required"
+          PY
+          [[ "$NAS_PORT" =~ ^[0-9]{1,5}$ ]]
+          ((10#$NAS_PORT >= 1 && 10#$NAS_PORT <= 65535))
+          [[ "$NAS_USER" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$ ]]
+          for directory in "$NAS_TARGET_DIR" "$NAS_APK_TARGET_DIR"; do
+            [[ "$directory" =~ ^/[A-Za-z0-9._/-]{1,300}$ ]]
+            [[ "/$directory/" != *"/../"* ]]
+          done
+          pin="${RUNNER_TEMP}/sgk-ssh/known_hosts"
+          label="$NAS_HOST"
+          if [[ "$NAS_PORT" != 22 ]]; then label="[$NAS_HOST]:$NAS_PORT"; fi
+          ssh-keygen -F "$label" -f "$pin" >/dev/null
+          batch="${RUNNER_TEMP}/sgk-private-sftp-readonly.batch"
+          printf 'cd "%s"\npwd\ncd "%s"\npwd\n' "$NAS_TARGET_DIR" "$NAS_APK_TARGET_DIR" > "$batch"
+          export SSHPASS="$NAS_PASSWORD"
+          if ! timeout 60s sshpass -e sftp -q -b "$batch" -P "$NAS_PORT" \
+              -o BatchMode=no -o ConnectTimeout=15 -o StrictHostKeyChecking=yes \
+              -o "UserKnownHostsFile=$pin" "$NAS_USER@$NAS_HOST" \
+              > "${RUNNER_TEMP}/sgk-private-sftp-readonly.private" 2>&1; then
+            echo "Private SFTP read-only preflight failed; no publication attempted." >&2
+            exit 1
+          fi
+          unset SSHPASS NAS_PASSWORD
+          printf 'private_sftp_readonly_ok=true\n' >> build/nas-private-status.evidence
+
       - name: Upload NAS private status evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
