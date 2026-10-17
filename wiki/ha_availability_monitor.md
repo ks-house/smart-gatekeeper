@@ -1,3 +1,5 @@
+> Current operating acceptance: [2026-10-17 follow-up results](followup_acceptance_2026_10_17.md). Earlier pending checkpoints below are historical.
+
 # Home Assistant availability and lifecycle observer
 
 ## Contract

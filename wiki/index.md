@@ -162,3 +162,5 @@
 - [ha_remaining_work_2026_10_17.md](ha_remaining_work_2026_10_17.md): HA447/441 and SmartBox7 follow-up acceptance and evidence boundaries.
 
 - [ha_availability_monitor.md](ha_availability_monitor.md): fixed-owner HA HTTP/WebSocket/lifecycle observer, durable evidence and notification gates.
+
+- [followup_acceptance_2026_10_17.md](followup_acceptance_2026_10_17.md): completed HA447/441 and SmartBox7 operating evidence, with separate Gmail458 decision.

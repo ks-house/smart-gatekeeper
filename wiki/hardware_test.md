@@ -1426,3 +1426,12 @@ No Target command, reboot, OTA trigger, relay action or physical success is infe
 | Real TLS/WebSocket and durable alarm/evidence tests12 | PASS | Isolated localhost fixtures |
 | Backend439,14 explicit opt-in skips | PASS | No production failure injection |
 | NAS candidate actual HA HTTP200/WSS101/auth_required | PASS | Read-only candidate; no observer install or notification |
+
+
+### 2026-10-17 operating follow-up acceptance
+
+| Gate | Result | Evidence limit |
+|---|---|---|
+| HA event JSON natural terminal911-152 | PASS | Integrity-verified outbox matches actual HA event state; not physical passage |
+| HA health/lifecycle and owner DSM failure/recovery route | PASS | Real HA not stopped; original cause/NAS reboot/email unverified |
+| SmartBox installed manifest failure404 then no-update200 | PASS | VERSION phase, IDLE/monotonic continuity; no actuator or new firmware install |
