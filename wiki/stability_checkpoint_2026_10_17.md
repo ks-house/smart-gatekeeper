@@ -24,14 +24,14 @@ Health receipt time, unsigned firmware/queue advisory and physical observations
 remain different evidence. The phone report is one reported app snapshot, not an
 inventory of every family phone. Installed46101 remains unconfirmed.
 
-## Completed next configuration step: NAS SSH boundary
+## NAS SSH candidate verified, then restored for OTA preservation
 
 Track [460](https://github.com/ks-house/smart-gatekeeper/issues/460).
 Before: SSH listens on4222/8822 and DSM firewall is disabled. The public-name4222
 banner was reachable from the management PC, but same-LAN NAT hairpin is possible.
 Existing failed external-login alerts motivated narrowing management access.
 
-After root-private export/backup and a300s connection-preservation watchdog,
+During a bounded candidate test, after root-private export/backup and a300s connection-preservation watchdog,
 DSM profile rules preserve the two existing disabled rules and add, in order:
 
 1. Allow TCP4222/8822 from Tailscale IPv4100.64.0.0/10.
@@ -46,6 +46,20 @@ Backend/HA/MQTT checks pass before disarming the watchdog. No external-refusal
 success marker is fabricated. The private before-export and signed-job source
 remain recoverable. Existing SSH keys/accounts/passwords and service configuration
 are preserved; there is no NAS/service/device restart.
+
+**Current operating state: firewall is restored to its original disabled state.**
+A later source audit confirms personal Target/mobile publishers still use
+NAS_HOST/NAS_PORT public SFTP and do not join Tailscale. Keeping the candidate
+enabled could break future OTA publication even though existing HTTPS downloads
+and current service checks pass. Signed job22de427d restores the original enabled
+flag before any new publication; no publication failure is induced. The four new
+rules remain inactive for later reviewed activation. The agent should have checked
+publisher ingress before the candidate activation.
+
+Required order: validate the CI SFTP route over Tailscale with the same publisher
+account and pinned host identity, migrate both publishers with explicit fallback
+and acceptance, then reapply the SSH boundary. An enabled firewall candidate is
+not reported as a completed production hardening.
 
 The external TCP-check service command was rejected by automatic approval review
 with no specific reason. An independent off-LAN TCP check and persistence after

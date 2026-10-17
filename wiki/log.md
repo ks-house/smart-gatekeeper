@@ -8052,3 +8052,9 @@
 - Read2,370,900,079-byte root-private migration SQL and compare its full SHA256 to the original sidecar: PASS,7.216s total preflight. No backup deletion, service interruption or operating restore.
 - Read-only information_schema metadata reports29 tables and about2.42GB data/index bytes. Mobile diagnostic bundles and Target health history dominate; table_rows are estimates, not exact inventory.
 - Record checksum/permissions separately from current isolated restore and recurring encrypted off-NAS copy, which remain pending in461. Ask the owner for the external backup destination while preserving all current backup/key material.
+
+## [2026-10-17] fix | Restore SSH baseline to preserve existing OTA publication
+
+- Further source audit finds personal Target and mobile publishers still use public NAS_HOST/NAS_PORT SFTP without Tailscale. Candidate SSH denial could therefore block future publication despite healthy existing HTTPS downloads.
+- Signed job22de427d verifies original firewall-disabled baseline, restores that flag and independently confirms disabled state. Keys/accounts/services unchanged; new rules are retained inactive. No failed publication or device action is induced.
+- This publisher route should have been checked before candidate activation. Amend current-state documentation and460: migrate/verify private SFTP first, then reactivate the SSH boundary. Earlier candidate kernel/connection proof remains historical and does not mean current SSH hardening is complete.

@@ -165,4 +165,4 @@
 
 - [followup_acceptance_2026_10_17.md](followup_acceptance_2026_10_17.md): completed HA447/441 and SmartBox7 operating evidence, with separately verified Gmail458 reauthentication and actual inbox delivery.
 
-- [stability_checkpoint_2026_10_17.md](stability_checkpoint_2026_10_17.md): current personal operating health, applied NAS SSH boundary and remaining off-LAN/backup/phone acceptance.
+- [stability_checkpoint_2026_10_17.md](stability_checkpoint_2026_10_17.md): current personal health, OTA-preserving rollback of an SSH candidate, and remaining private-SFTP/backup/phone acceptance.
