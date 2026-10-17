@@ -8101,3 +8101,11 @@
 - Review467 frozen sourcefeedb9411ea065032a07847ac4780c0e87635906; update exactly four protected digests while retaining23 paths/seven workflows, trusted validator and19 unrelated inputs.
 - Keep predecessor/admitted transition limited to those four paths; preserve source/namespace/mixed-bundle refusal.131 focused OTA regressions and29 Backend/NAS contracts PASS.
 - This source admission creates no identity/network grant, activates no transport/firewall and publishes no device artifact. Owner access approval and actual private SFTP/publication proof remain separate; backup461 stays deferred.
+
+## [2026-10-17] test | Accept owner-approved personal OTA private connection
+
+- Owner explicitly approves new OTA tag, NAS-only tcp4222 grant and personal-main-only OIDC. Save and read back tag:sgk-github-ota, exact environment subject, repository_id1281428181/ref refs/heads/main and auth_keys-only scope. Preserve production deploy8822 and other rules; no NAS account/shell/sshd changes.
+-467 merges as79ecb000 after all five required checks;468 policy merged. Source-only main runs39034588220/221/39034588301 cancel before any publisher/deploy step execution.
+- Configure only personal-auto-ota federation metadata and private NAS4222 variables. Actual manual39034675586 joins with the new identity and passes read-only Target/primary APK/fallback directory checks; download and verify the exact sanitized success receipt.
+- Read back OTA_PUBLISH_TRANSPORT=tailscale for future releases. This config change publishes no artifact and triggers no device command/install.460 remains open for actual atomic publication/HTTPS proof and later external SSH refusal; current firewall stays disabled and461 backup remains deferred.
+- Independent health checkb7b2ac46 confirms unchanged Backend64b5c2f readiness, HA HTTP200/WSS101/zero monitor failures, authenticated reconnect, anonymous-false broker and preserved authenticated OTA guard. No service restart or deferred backup action.

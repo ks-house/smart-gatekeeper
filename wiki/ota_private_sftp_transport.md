@@ -4,8 +4,11 @@
 
 The owner's2026-10-17 instruction defers backup work461. Work now prioritizes
 GitHub-to-NAS OTA publication over Tailscale before external SSH is blocked.
-The prior SSH candidate remains inactive; current publication and NAS settings
-are unchanged by this source candidate. No device command or install is required.
+The prior SSH firewall candidate remains inactive. Reviewed main79ecb000 now
+supports the private route; owner-approved tag/grant/OIDC are installed and
+main-only personal-auto-ota selects tailscale:4222 for future publication.
+Actual private SFTP authentication and three-directory reads pass in39034675586.
+No artifact publication, device command/install or firewall cutover is claimed.
 
 Personal Target and mobile publishers gain an opt-in transport selector:
 
@@ -108,8 +111,38 @@ the management account is admin. Do not add administrator membership, grant a
 shell, change sshd/PAM, or broaden the existing management tag to solve this.
 
 The current source separates service and role, defaults private publication to
-SFTP4222, and restores diagnostics to a private log with sftp -N. The new tag,
-grant and personal OIDC credential remain uncreated pending owner approval.
+SFTP4222, and restores diagnostics to a private log with sftp -N. The owner approved the exact new tag/grant/OIDC scope on2026-10-17, and they are
+now created and independently read back. Production federation is preserved.
 The earlier source/CI passes are not proof of private operating publication.
 Backup461 remains deferred, and the NAS firewall remains at its restored
 original disabled state until private publication and HTTPS readback pass.
+
+
+## Owner-approved operating connection acceptance
+
+PR467 merged as79ecb000dd5e830f3519f60b6558e08da287b11c after all five required
+checks passed; policy468 is also merged. Source-only main39034588220/221 and
+39034588301 were cancelled before publisher/deploy steps ran, preventing
+redundant versions or service churn.
+
+The saved Tailscale configuration has exactly one new tag:sgk-github-ota and a
+grant to the existing NAS host definition on tcp:4222. Existing member and
+production deploy8822 rules remain unchanged. New OIDC scope is auth_keys only;
+persisted subject is the personal-auto-ota environment with ref refs/heads/main
+and repository_id1281428181. No devices:core, policy editing, management shell or
+new NAS account/password permission was granted.
+
+GitHub personal-auto-ota retains its main-only branch restriction. Only the two
+public OIDC metadata items and private NAS host/port were configured there;
+production federation was preserved. Run39034675586 joins using this exact
+new identity and completes Target/primary APK/fallback APK cd/pwd successfully.
+The downloaded receipt is exactly start=true and readonly_ok=true; no raw
+connection logs or credentials enter the retained artifact.
+
+OTA_PUBLISH_TRANSPORT=tailscale is now independently read back, so future
+personal releases use SFTP4222 and do not silently fall back to public.
+This does not trigger publication by itself. Actual private atomic publication
+and HTTPS artifact/readback acceptance are still required before reactivating
+the external SSH firewall restriction. Keep460 open; current NAS firewall stays
+disabled and existing download/rollback paths remain available. Backup461 is
+still owner-deferred; no new dump/copy/restore/schedule was run.

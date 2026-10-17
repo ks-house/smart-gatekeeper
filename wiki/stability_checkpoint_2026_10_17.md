@@ -96,3 +96,14 @@ This checkpoint does not declare the whole environment or commercial release
 complete. Additional general NAS settings authority is dated2026-10-17 only.
 
 Policy references: [Synology firewall rules](https://kb.synology.com/en-global/DSM/help/DSM/AdminCenter/connection_security_firewall).
+
+
+### Private OTA connection accepted; firewall still pending
+
+Owner approves the exact personal-main-only tag/grant/OIDC addition.
+PR467/468 are merged after checks; actual private SFTP preflight39034675586
+passes all three publisher directories. Future personal publication now selects
+Tailscale4222. No new firmware/APK publication or device install was attempted.
+Keep460 open until actual private atomic publication plus HTTPS readback and
+the later external SSH denial are verified. Firewall remains at its restored
+disabled baseline, existing services remain healthy, and461 stays deferred.
