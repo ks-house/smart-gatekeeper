@@ -1406,3 +1406,5 @@ No Target command, reboot, OTA trigger, relay action or physical success is infe
 |---|---|---|
 | Isolated HA/access/signed-maintenance suite | PASS53 | Real crypto, timeout, replay, root installation and existing broker/HA fixtures |
 | NAS signed maintenance | Installation pending | Root authority is not inferred from source/tests |
+
+- 2026-10-17:55 isolated HA/access/log recovery tests PASS, including real Mosquitto with missing log in0555 directory, private precreate/HUP recovery, same container/start and held MQTT connection. Backend409/13 skips and OTA contract pass. This is software evidence, with no physical movement or OTA installation.

@@ -23,3 +23,7 @@ The current first use is a read-only comparison of Synology Docker log query var
 The local signer and NAS verifier both use OpenSSL RSA3072/SHA256. No cryptography Python package is required. Hosted CI exercises real signatures.
 
 2026-10-17: PR449 merged34867e7f after all hosted gates passed. Persistent setup-signed-maintenance.sh is captured from merged bytes. Dedicated-key authentication is not yet accepted; first administrator registration remains pending. This grants signed root-code execution, not a code sandbox.
+
+Operating acceptance2026-10-17: registration is independently verified by fresh dedicated-key status, signer match, refusal cases and successful signed UID0 diagnostics/operator update. Administrator prompts are no longer needed for approved signed maintenance. This access success does not complete broker/HA authentication migration.
+
+See [Docker log recovery](docker_log_recovery.md) for bounded Synology SQLite observation and the process-preserving daemon recovery plan.

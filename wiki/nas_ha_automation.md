@@ -24,3 +24,7 @@ The preflight connection marker uses the same reviewed broker endpoint as HA, in
 Broker cutover/rollback remains on the existing broker client. If a failed cutover needs HA account removal, restore the previous broker first, then invoke HA rollback. Source merge and key installation are distinct from successful account migration, authenticated reconnect, OTA or physical access.
 
 2026-10-17 root cause: Mosquitto cannot initialize its configured log file when the directory is0555 and the file is absent. This suppresses notice logging on stdout too. Logging recovery precreates only the fixed0600 broker-owned file after isolated config validation, preserves directory permissions/config/TLS bytes, sends HUP to the same container and still requires fresh CONNECT-only notice proof.
+
+Operating recovery2026-10-17: file creation and exact fresh CONNECT notice in the private log are verified. Docker db transport still returns headers then times out, so the guarded refresh job fails its final gate and HA adoption/cutover remains pending. Do not retry HUP blindly or claim a particular database transport cause.
+
+See [Docker log recovery](docker_log_recovery.md) for bounded Synology SQLite observation and the process-preserving daemon recovery plan.
