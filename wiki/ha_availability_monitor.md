@@ -64,3 +64,15 @@ not yet install a production service.
 
 Service installation, owner-visible test alarm/recovery and persistent repeated
 healthy samples remain operating acceptance gates. Do not close441 from source/CI.
+
+## DSM7 native notification format
+
+Actual owner route testing establishes that DSM7 rejects arbitrary title/body
+strings. Use the installed generic desktop mail-string key
+DSMSupportFormCustomMessage and its documented custom-variable JSON mechanism,
+with exactly %CUSTOM_MSG%. No vendor text/notification settings or package are
+modified. The actual native call returns0 and the logged-in owner DSM notification
+list displays the labeled Smart Gatekeeper diagnostic message. Full observer
+failure/recovery path acceptance is still required after this source update.
+
+[Synology native notification interface](https://help.synology.com/developer-guide/resource_acquisition/sysnotify.html).

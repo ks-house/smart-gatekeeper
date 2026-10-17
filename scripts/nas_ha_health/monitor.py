@@ -26,6 +26,7 @@ ROOT = Path("/usr/local/lib/smart-gatekeeper-ha-health")
 STATE = Path("/volume1/smart-gatekeeper-operations-private/ha-health")
 SOCKET = "/var/run/docker.sock"
 NOTIFIER = "/usr/syno/bin/synodsmnotify"
+NOTIFICATION_KEY = "DSMSupportFormCustomMessage"
 ORIGIN = "https://tworimpa.synology.me:4123/"
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -306,7 +307,9 @@ def notify_owner(notice, test=False):
         message = "운영 서비스를 중단하지 않은 경보 경로 시험입니다. " + message
     tag = "sgk-ha-health-" + notice["incident"] + "-" + notice["phase"]
     result = subprocess.run([NOTIFIER, "-t", tag, "-l", "warn" if notice["phase"] == "failure" else "info",
-                             "noty00", title, message], capture_output=True, timeout=5)
+                             "noty00", NOTIFICATION_KEY,
+                             json.dumps({"%CUSTOM_MSG%": title + "\n" + message},
+                                        ensure_ascii=False)], capture_output=True, timeout=5)
     return result.returncode == 0
 
 
