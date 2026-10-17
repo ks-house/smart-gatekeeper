@@ -238,7 +238,8 @@ def main():
         elif command == "diagnose":
             result = {}
             for filename in ("last-error.json", "last-query-error.json",
-                             "last-observe-error.json", "stage-error.json"):
+                             "last-observe-error.json", "stage-error.json",
+                             "last-activation-diagnostic.json", "last-activation-diagnostic-error.json"):
                 path = STATE/filename
                 if path.exists():
                     result[filename] = json.loads(path.read_text())

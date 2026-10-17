@@ -172,7 +172,7 @@ SmartBox0.1.0-ge0323a0 is installed with fresh reconnect/IDLE and an authenticat
 
 Acceptance requires a fresh exact MQTT client/username connection record and HTTPS HA readiness. On initial failure, restore managed settings and modes only after credential removal; preserve unrelated HA changes and refuse concurrent identity overwrite. An independent300s watchdog recovers interrupted adoption. Successful adoption leaves named credentials/private storage installed and observes up to600s for a later authenticated-broker reconnect. That later audit requires a changed broker container, two anonymous=false directives, current file hash/stage bindings and a new HA connection since broker start. It does not itself apply broker settings.
 
-Pre-cutover username transmission on an anonymous broker is not authentication proof. No physical commands are sent. HA restart policy/stop-cause issue441 remains separate; user-only administrator authentication is required for this helper because the dedicated key has no HA editing authority.
+Pre-cutover username transmission on an anonymous broker is not authentication proof. No physical commands are sent. HA restart policy/stop-cause issue441 remains separate. Initial setup required administrator authentication. Subsequent dedicated HA and signed maintenance roles now provide owner-approved unattended operations; their actual installation/command acceptance is recorded in the later rollout notes.
 
 
 ### HA mount ownership preflight repair
@@ -194,3 +194,7 @@ The standalone HA operator now compares the actual container configuration views
 Before stopping HA, a random MQTT5 client sends only CONNECT/DISCONNECT on the legacy local listener. It has no password, will, subscription or publication and does not reuse HA's client ID. Its exact named connection notice must appear with an unambiguous fresh timestamp within15 seconds; a missing/refused marker fails preflight before any HA stop or credential write. HA's own exact client/username reconnect and post-cutover authentication checks remain required separately.
 
 The operating diagnostic accepted a connect-only marker but did not observe it through the bounded API/CLI log paths, including repeated collection beyond8 minutes. Current HA logs contain naturally received MQTT event warnings, so absence of the migration client's notice is not proof that HA cannot connect. The precise broker logging/container-view cause remains pending; no logging reload, HA retry or broker cutover is claimed by this source repair.
+
+### 2026-10-17: current rollout checkpoint
+
+HA named-account preparation is verified on the original image/container, with private700/600 storage and fresh notice/readiness. The first live broker replacement rolls back at the collector no-restart gate. Exact candidate Telegraf configuration is valid; isolated same-image startup reproduces failure when its broker is absent. Broker-first authenticated connect readiness and private failed-container diagnostics are prepared for the next reviewed rollout. Both anonymous directives remain true until a successful verified cutover.

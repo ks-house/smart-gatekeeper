@@ -27,3 +27,5 @@ The local signer and NAS verifier both use OpenSSL RSA3072/SHA256. No cryptograp
 Operating acceptance2026-10-17: registration is independently verified by fresh dedicated-key status, signer match, refusal cases and successful signed UID0 diagnostics/operator update. Administrator prompts are no longer needed for approved signed maintenance. This access success does not complete broker/HA authentication migration.
 
 See [Docker log recovery](docker_log_recovery.md) for bounded Synology SQLite observation and the process-preserving daemon recovery plan.
+
+Owner authorization2026-10-17: NAS settings inspection/cleanup through the management address is approved today only. This does not create an ongoing future settings-change approval.

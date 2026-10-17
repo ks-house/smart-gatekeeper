@@ -1345,5 +1345,97 @@ class LocalNasVerifiedHttpsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"verified HTTPS"):
             m.https_response("http://tworimpa.synology.me:4442/ready")
 
+
+class BrokerCollectorDependencyTest(unittest.TestCase):
+    def test_broker_authentication_precedes_collector_and_failure_blocks_collector_start(self):
+        m=load().docker;events=[]
+        def replace(name,*args):events.append(name)
+        def ready(*args):events.append("authenticated-ready");return {"prepared_principal_connect_only_verified":True}
+        stage={"policy_root":"/fixture/policy","broker_uid":1883,"broker_gid":1883}
+        with patch.object(m,"replace_container",side_effect=replace),patch.object(m,"wait_broker_principal",side_effect=ready):
+            result=m.replace_broker_and_collector(stage,Path("/fixture/active"),Path("/fixture/collector"),{}, {},lambda x:None)
+        self.assertEqual(["mosquitto","authenticated-ready","telegraf"],events)
+        self.assertTrue(result["prepared_principal_connect_only_verified"])
+        events.clear()
+        with patch.object(m,"replace_container",side_effect=replace), \
+             patch.object(m,"wait_broker_principal",side_effect=RuntimeError("not ready")),self.assertRaises(RuntimeError):
+            m.replace_broker_and_collector(stage,Path("/fixture/a"),Path("/fixture/c"),{}, {},lambda x:None)
+        self.assertEqual(["mosquitto"],events)
+
+    def test_rollback_restores_broker_before_collector_and_captures_before_deletion(self):
+        m=load().docker;events=[]
+        with patch.object(m,"restore_container",side_effect=lambda item:events.append(item["original"])):
+            m.restore_transaction([{"original":"telegraf"},{"original":"mosquitto"}])
+        self.assertEqual(["mosquitto","telegraf"],events)
+        events.clear()
+        item={"original":"telegraf","backup":"telegraf_sgk_previous_"+"a"*10,
+              "original_id":"old","original_image":"image","restart_policy":{"Name":"no"}}
+        with patch.object(m,"inspect",return_value={"Id":"old","Image":"image"}), \
+             patch.object(m,"preserve_replacement_diagnostics",side_effect=lambda *a:events.append("capture")), \
+             patch.object(m,"api",side_effect=lambda method,path,*a:events.append(method)):
+            m.restore_container(item)
+        self.assertEqual(["capture","DELETE","POST","POST","POST"],events)
+
+    def test_connection_deadline_is_bounded_and_auth_refusal_is_not_retried(self):
+        m=load().docker
+        with patch.object(m.socket,"create_connection",side_effect=OSError()), \
+             patch.object(m.time,"monotonic",side_effect=[0,31]),self.assertRaisesRegex(RuntimeError,"readiness deadline"):
+            m.wait_broker_principal({"ha_username":"fixture"},{"fixture":"a"*64})
+        stream=MagicMock();stream.__enter__.return_value=stream
+        stream.recv.side_effect=[bytes([32]),bytes([3]),bytes([0,135,0])]
+        with patch.object(m.socket,"create_connection",return_value=stream) as connect, \
+             self.assertRaisesRegex(RuntimeError,"principal was refused"):
+            m.wait_broker_principal({"ha_username":"fixture"},{"fixture":"a"*64})
+        self.assertEqual(1,connect.call_count)
+
+    def test_failed_container_evidence_is_private_and_capture_errors_do_not_block_rollback(self):
+        import sqlite3,types
+        m=load().docker
+        with tempfile.TemporaryDirectory() as tmp:
+            directory=Path(tmp);m.STATE=directory/"state";m.STATE.mkdir()
+            m.DOCKER_LOG_ROOT=directory/"containers";identifier="a"*64
+            folder=m.DOCKER_LOG_ROOT/identifier;folder.mkdir(parents=True)
+            db=folder/"log.db";connection=sqlite3.connect(db)
+            connection.execute("CREATE TABLE log_content(docid INTEGER PRIMARY KEY,c0text,c2created)")
+            connection.execute("INSERT INTO log_content VALUES(1,?,?)",("fixture-private-failure","2026-10-17T01:00:00Z"))
+            connection.commit();connection.close()
+            current={"Id":identifier,"Image":"fixture-image","State":{"Status":"exited","ExitCode":1},
+                     "RestartCount":1,"HostConfig":{"LogConfig":{"Type":"db"}}}
+            real_stat=Path.stat
+            def stat_value(path,*args,**kwargs):
+                value=real_stat(path,*args,**kwargs)
+                return types.SimpleNamespace(st_uid=0,st_mode=value.st_mode) if path==db else value
+            with patch.object(m,"inspect",return_value=current),patch.object(Path,"stat",stat_value),patch.object(m.os,"fchown"):
+                m.preserve_replacement_diagnostics("telegraf","old")
+            pointer=json.loads((m.STATE/"last-activation-diagnostic.json").read_text())
+            private=Path(pointer["private_directory"])/"container.json"
+            self.assertEqual(0o700,private.parent.stat().st_mode&0o777)
+            self.assertEqual(0o600,private.stat().st_mode&0o777)
+            self.assertIn("fixture-private-failure",private.read_text())
+            self.assertNotIn("fixture-private-failure",json.dumps(pointer))
+            with patch.object(m,"inspect",return_value=current),patch.object(m,"atomic",side_effect=OSError("full")):
+                m.preserve_replacement_diagnostics("telegraf","old")
+
+
+@unittest.skipUnless(os.getenv("RUN_MQTT_ACL_INTEGRATION")=="1","real prepared-principal MQTT readiness opt-in")
+class ActualBrokerPrincipalReadinessTest(unittest.TestCase):
+    def test_real_mqtt5_long_principal_and_password_use_complete_connect_only_packet(self):
+        from tests.test_broker_acl_integration import BrokerFixture,PROFILE,IMAGE
+        from scripts.render_broker_acl import render_acl
+        m=load().docker;fixture=BrokerFixture(render_acl(PROFILE))
+        username="u"*64;password="f"*64
+        try:
+            fixture.docker("run","--rm","--user",fixture.uid,"-v",str(fixture.directory)+":/fixtures",
+                "--entrypoint","mosquitto_passwd",IMAGE,"-b","/fixtures/passwords",username,password)
+            fixture.docker("kill","--signal","HUP",fixture.name)
+            result=m.wait_broker_principal({"ha_username":username},{username:password},
+                                           endpoint=("127.0.0.1",fixture.port))
+            self.assertTrue(result["prepared_principal_connect_only_verified"])
+            with self.assertRaisesRegex(RuntimeError,"principal was refused"):
+                m.wait_broker_principal({"ha_username":username},{username:"a"*64},
+                                       endpoint=("127.0.0.1",fixture.port))
+        finally:
+            fixture.close()
+
 if __name__ == "__main__":
     unittest.main()
