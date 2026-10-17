@@ -353,17 +353,44 @@ jobs:
           batch="${RUNNER_TEMP}/sgk-private-sftp-readonly.batch"
           printf 'cd "%s"\npwd\ncd "%s"\npwd\n' "$NAS_TARGET_DIR" "$NAS_APK_TARGET_DIR" > "$batch"
           export SSHPASS="$NAS_PASSWORD"
-          if ! timeout 60s sshpass -e sftp -q -b "$batch" -P "$NAS_PORT" \
-              -o BatchMode=no -o ConnectTimeout=15 -o StrictHostKeyChecking=yes \
-              -o "UserKnownHostsFile=$pin" "$NAS_USER@$NAS_HOST" \
-              > "${RUNNER_TEMP}/sgk-private-sftp-readonly.private" 2>&1; then
-            echo "Private SFTP read-only preflight failed; no publication attempted." >&2
+          private_log="${RUNNER_TEMP}/sgk-private-sftp-readonly.private"
+          if timeout 60s sshpass -e sftp -q -o BatchMode=no -b "$batch" -P "$NAS_PORT" \
+              -o ConnectTimeout=15 -o StrictHostKeyChecking=yes \
+              -o "UserKnownHostsFile=$pin" "$NAS_USER@$NAS_HOST" > "$private_log" 2>&1; then
+            unset SSHPASS NAS_PASSWORD
+            printf 'private_sftp_readonly_ok=true\n' >> build/nas-private-status.evidence
+          else
+            export SFTP_EXIT_CODE="$?"
+            unset SSHPASS NAS_PASSWORD
+            python - <<'PY'
+          import os, re
+          from pathlib import Path
+          raw = (Path(os.environ["RUNNER_TEMP"]) / "sgk-private-sftp-readonly.private").read_bytes()[:32768].decode(errors="replace")
+          code = int(os.environ["SFTP_EXIT_CODE"])
+          category = "SFTP_CLIENT_FAILURE"
+          if code == 124:
+              category = "NETWORK_TIMEOUT"
+          elif re.search(r"host key verification failed|host identification has changed", raw, re.I):
+              category = "HOST_IDENTITY"
+          elif code == 5 or re.search(r"Permission denied.*password|Authentication failed", raw, re.I):
+              category = "AUTHENTICATION"
+          elif re.search(r"subsystem request failed", raw, re.I):
+              category = "SFTP_SUBSYSTEM"
+          elif re.search(r"No such file|couldn.t canonicalize|not found", raw, re.I):
+              category = "REMOTE_DIRECTORY"
+          elif re.search(r"Permission denied", raw, re.I):
+              category = "REMOTE_PERMISSION"
+          with Path("build/nas-private-status.evidence").open("a") as evidence:
+              evidence.write("private_sftp_readonly_ok=false\n")
+              evidence.write("private_sftp_failure_category=" + category + "\n")
+              evidence.write("private_sftp_exit_code=" + str(code) + "\n")
+          print("Private SFTP read-only preflight failed: " + category + "; no publication attempted.")
+          PY
             exit 1
           fi
-          unset SSHPASS NAS_PASSWORD
-          printf 'private_sftp_readonly_ok=true\n' >> build/nas-private-status.evidence
 
       - name: Upload NAS private status evidence
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: nas-private-status-${{ github.sha }}-attempt-${{ github.run_attempt }}

@@ -8075,6 +8075,13 @@
 - Update policy transition tests to accept exactly predecessor or reviewed bytes for the five changed inputs; keep source/namespace/mixed-bundle refusal. No policy bypass or candidate code execution in the base trusted check.
 - Admission does not configure OIDC/transport, publish an artifact, restart a service or activate the firewall. Backup461 is owner-deferred.
 
+## [2026-10-17] fix | Correct real SFTP batch options and preserve safe failure receipts
+
+- PR464 policy and463 feature are merged after all required checks. Feature mainaa7db814 cancels source-only Target39031506897, mobile39031506810 and Backend39031506882; publication/deploy effect jobs are skipped. No new runtime artifact or operating deployment is claimed.
+- Existing production-protected private status/SFTP run39031524098 passes signed status, then fails SFTP without publishing. Actual OpenSSH parser reproduction proves -b before BatchMode=no keeps batchmodeyes and suppresses password authentication; reverse their order.
+- Add a real sftp-to-fake-SSH argument regression and ssh -G effective-mode check with no outbound network. Preserve only closed failure enums/exit code in an always-retained sanitized receipt; keep raw client output private and failed checks unacknowledged.
+-19 focused and29 Backend/NAS tests PASS. No NAS setting, identity grant, publication, device command or deferred backup work performed. Existing Tailscale OIDC is production-subject-only; a personal main/repository-bound draft with auth_keys and existing NAS8822 tag is prepared but not generated pending explicit approval after network preflight.
+
 ## [2026-10-17] compile | Admit the isolated private SFTP preflight correction
 
 - Review immutable465 source84b300a55de1670a2f846499d3af64a978cea40b; only Backend workflow digest changes, preserving all23 protected paths and22 unrelated hashes.

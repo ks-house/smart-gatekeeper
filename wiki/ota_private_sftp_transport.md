@@ -78,3 +78,19 @@ Do not call a CI/source pass a completed network cutover.
  Linux Docker CLI/Compose paths for config rendering only; no daemon change.
 -OTA contract command PASS. The trusted policy correctly refuses five changed
  protected digests until the separate admission; it is not bypassed.
+
+
+## Read-only preflight option-order follow-up
+
+The first actual private job39031524098 passed the existing signed status
+connection but failed at SFTP, with no publication or device action.
+A real local OpenSSH sftp transport stub plus ssh -G reproduces the option-order
+defect: putting -b before -o BatchMode=no forwards batchmodeyes first and
+suppresses password prompts. Put the explicit BatchMode=no option before -b.
+This is a protocol/client reproduction, not just a fake SFTP success.
+
+Failure now retains only a closed category and exit code in the existing
+sanitized status receipt. The raw client text stays private on the runner.
+An always-run artifact step retains this receipt even when SFTP fails; failures
+never gain a success marker.19 focused selector/preflight/real-client/error
+tests and29 Backend/NAS contracts PASS. Live retry remains separate acceptance.
