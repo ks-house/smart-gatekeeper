@@ -8017,3 +8017,10 @@
 ## [2026-10-17] test | Validate DSM notification adapter correction
 
 - Twelve focused tests and Backend439/14 explicit skips PASS after native mail-key correction. Actual generic native message call succeeds and owner UI renders it; a real observer failure/recovery test remains pending deployment of this adapter.
+
+## [2026-10-17] test | Accept all three named follow-up operating gates
+
+- Signed auditb4f54ae1 proves447 natural integrity-verified terminal marker911-152/outbox05:49:02.495UTC and HA state05:49:02.555UTC after Backend64b5c2f deployment. The later live observer missed that prior event; preserve its honest window receipt. No synthetic access event or physical-passage claim.
+- HA441 observer is active/enabled with source94705f01/private Btrfs evidence,175 healthy samples/zero failures/empty queue. Failure/recovery testfb0ff5bf is accepted by native DSM and owner UI at15:26:08/09. External HTTP/WSS pass; original stop cause remains unknown despite preserved archives. Email is separate.
+- SmartBox actual357864821 proves attempts2→3→4, manifest200→404→200, VERSION/IDLE, increasing millis and no updater error. Exact temporary rule cleanup/stable hashes and API readiness pass. Versione0323a0/artifact333e23df remain installed/published; no actuator command or firmware install.
+- Source PR455/456/457 and SmartBox15 are merged after checks. Source-only API jobs cancelled; SmartBox redundant main39011920146 cancelled. Additional Gmail OAuth issue458 awaits channel decision; no Google auth or email mutation. Date-limited NAS authority and other physical/OEM gates remain separate.
