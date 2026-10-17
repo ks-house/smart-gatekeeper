@@ -7917,3 +7917,9 @@
 - Final53 isolated HA/access/maintenance cases PASS after signature-before-compilation ordering. Backend407 default cases PASS/12 explicit skips; OTA contract PASS. Protected bundle inventory SHAe9080dbf is unchanged.
 - SmartBox WSL native13 PASS and ESP32-C6 build PASS using example dummy provisioning only (RAM62172B, flash1343884B). The dummy header is removed and generated version header restored. No real credential, artifact publication, OTA or physical movement.
 - Signed maintenance remains uninstalled; prepare the reviewed first registration rather than bypassing the existing six-command key. Full broker transition is not yet achieved.
+
+
+## [2026-10-17] fix | Use deployed OpenSSL signing path in maintenance CI
+
+- Hosted PR449 Backend failed because cryptography was installed locally but absent from the admitted CI runtime. Replace the local signer dependency and test key generation with OpenSSL RSA3072/SHA256; keep real signature, tamper and replay checks mandatory. No workflow or protected dependency inventory change.
+- No NAS authority, account or service change by this source repair.

@@ -42,8 +42,6 @@ def arguments(directory):
 
 
 def envelope(script, operation, timeout, directory, request_id=None):
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import padding
     if (re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", operation) is None
             or type(timeout) is not int or not 1 <= timeout <= 900
             or not script or len(script) > 262144):
@@ -66,10 +64,13 @@ def envelope(script, operation, timeout, directory, request_id=None):
                 "script_sha256": code_hash, "issued_at": epoch, "expires_at": epoch+900,
                 "timeout_seconds": timeout}
     raw_manifest = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
-    key = serialization.load_pem_private_key(private(directory/"signer-private.pem"), password=None)
-    if key.key_size != 3072:
-        raise ValueError("RSA3072 maintenance signer required")
-    signature = key.sign(raw_manifest, padding.PKCS1v15(), hashes.SHA256())
+    key_path = directory/"signer-private.pem"
+    private(key_path)
+    signed = subprocess.run(["openssl", "dgst", "-sha256", "-sign", str(key_path)],
+                            input=raw_manifest, capture_output=True, timeout=15)
+    if signed.returncode or len(signed.stdout) != 384:
+        raise ValueError("RSA3072 maintenance signing failed")
+    signature = signed.stdout
     raw = json.dumps({"manifest": manifest, "script": base64.b64encode(script).decode(),
                      "signature": base64.b64encode(signature).decode()},
                     sort_keys=True, separators=(",", ":")).encode()

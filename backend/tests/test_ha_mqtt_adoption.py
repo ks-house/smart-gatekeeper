@@ -829,13 +829,15 @@ class HaLoggingRecoveryTest(unittest.TestCase):
 class SignedMaintenanceTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from cryptography.hazmat.primitives import serialization
-        from cryptography.hazmat.primitives.asymmetric import rsa
-        cls.signer = rsa.generate_private_key(public_exponent=65537, key_size=3072)
-        cls.private_bytes = cls.signer.private_bytes(serialization.Encoding.PEM,
-            serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
-        cls.public_bytes = cls.signer.public_key().public_bytes(serialization.Encoding.PEM,
-            serialization.PublicFormat.SubjectPublicKeyInfo)
+        import subprocess
+        with tempfile.TemporaryDirectory() as tmp:
+            key = Path(tmp)/"signer.pem"
+            subprocess.run(["openssl", "genpkey", "-algorithm", "RSA",
+                "-pkeyopt", "rsa_keygen_bits:3072", "-out", str(key)],
+                check=True, capture_output=True, timeout=30)
+            cls.private_bytes = key.read_bytes()
+            cls.public_bytes = subprocess.check_output(
+                ["openssl", "pkey", "-in", str(key), "-pubout"], timeout=15)
 
     def setUp(self):
         import shutil
