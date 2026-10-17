@@ -19,6 +19,7 @@ import uuid
 
 ROOT = Path("/usr/local/lib/smart-gatekeeper-ha-ops")
 STATE = ROOT/"state"
+BROKER_LOG = Path("/volume1/docker/mosquitto/log/mosquitto.log")
 COMMANDS = ("status", "diagnose", "refresh-logging", "adopt", "verify", "rollback")
 MUTATIONS = set(COMMANDS)-{"status"}
 FILES = {"ha_ops.py": "bin/ha_ops.py", "ssh_dispatch.sh": "bin/ssh_dispatch.sh",
@@ -209,6 +210,44 @@ def diagnose(config, m):
     return result
 
 
+def ensure_broker_log(text, broker, uid, gid):
+    destinations = re.findall(r"(?m)^\s*log_dest\s+file\s+(\S+)\s*$", text)
+    if not destinations:
+        return {"required": False, "created": False}
+    if destinations != ["/mosquitto/log/mosquitto.log"]:
+        raise ValueError("fixed broker log destination required")
+    mounts = [x for x in broker["Mounts"] if x["Destination"] == "/mosquitto/log"]
+    if (len(mounts) != 1 or mounts[0]["Source"] != str(BROKER_LOG.parent)
+            or not mounts[0].get("RW") or type(uid) is not int or type(gid) is not int
+            or uid <= 0 or gid <= 0):
+        raise ValueError("bound broker log mount and non-root identity required")
+    directory = os.open(str(BROKER_LOG.parent), os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        info = os.fstat(directory)
+        if info.st_mode & 0o022:
+            raise ValueError("protected broker log directory required")
+        created = False
+        try:
+            descriptor = os.open(BROKER_LOG.name, os.O_RDONLY|os.O_NONBLOCK|os.O_NOFOLLOW,
+                                 dir_fd=directory)
+        except FileNotFoundError:
+            descriptor = os.open(BROKER_LOG.name,
+                os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW, 0o600, dir_fd=directory)
+            created = True
+        try:
+            if created:
+                os.fchown(descriptor, uid, gid);os.fchmod(descriptor, 0o600);os.fsync(descriptor)
+            info = os.fstat(descriptor)
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != uid
+                    or info.st_gid != gid or stat.S_IMODE(info.st_mode) != 0o600):
+                raise ValueError("private broker-owned regular log required")
+        finally:
+            os.close(descriptor)
+        return {"required": True, "created": created, "uid": uid, "gid": gid, "mode": "0o600"}
+    finally:
+        os.close(directory)
+
+
 def refresh_logging(config, m):
     ha, broker, identity = bindings(config, m)
     plan = dict(config["plan"])
@@ -242,6 +281,10 @@ def refresh_logging(config, m):
     checked = subprocess.run(command, capture_output=True, timeout=30)
     if checked.returncode:
         raise ValueError("isolated current broker configuration did not validate")
+    # A read-only log directory prevents Mosquitto from creating an absent file.
+    # Its failed log initialization suppresses connection notices even on stdout.
+    # Precreate only the fixed service-owned private file; preserve directory mode.
+    log_file = ensure_broker_log(text, broker, evidence["broker_uid"], evidence["broker_gid"])
     # Only reread the already pinned configuration. No config/account/image write.
     m.docker.api("POST", "/containers/"+broker["Id"]+"/kill?signal=HUP")
     time.sleep(1)
@@ -255,7 +298,7 @@ def refresh_logging(config, m):
     m.verify_observation(binding)
     return {"broker_hup_sent": True, "same_container_and_start": True,
             "configuration_bytes_changed": False, "credentials_changed": False,
-            "fresh_log_notice_verified": True, "ha_stopped": False}
+            "fresh_log_notice_verified": True, "ha_stopped": False, "log_file": log_file}
 
 
 def adopt(config, m, identifier):

@@ -7923,3 +7923,19 @@
 
 - Hosted PR449 Backend failed because cryptography was installed locally but absent from the admitted CI runtime. Replace the local signer dependency and test key generation with OpenSSL RSA3072/SHA256; keep real signature, tamper and replay checks mandatory. No workflow or protected dependency inventory change.
 - No NAS authority, account or service change by this source repair.
+
+
+## [2026-10-17] fix | Merge signed maintenance after resolving CI dependency
+
+- PR449 head ae7fb1c passes hosted Backend/MariaDB38986060179, OTA38986060198 and trusted-policy38986058263; merged34867e7f. Initial CI failure was the local-only cryptography dependency. Client and real signature fixtures now use installed OpenSSL directly; Backend407/12 explicit skips PASS locally. PR449 is attached to this task.
+- Captured initial registration matches merged bootstrap/gateway/dispatch/client bytes. Separate owner-private SSH and RSA3072 signer keys stay in WSL; package contains only public keys. Compressed administrator command is19494B. Existing HA/broker keys are preserved by the reviewed install transaction.
+- Fresh new-key status fails and the old administrator ControlMaster handle is missing. Initial registration is genuinely pending administrator terminal authentication; it is not inferred from prepared files. This role explicitly authorizes signed root Python code. No HA account, broker policy, physical command or OTA changes.
+- Prepared a bounded read-only comparison of Docker tail200/since, tailall/since and since-only transports using one CONNECT/DISCONNECT marker. Diagnosis awaits installed authority; missing notices are still not assigned a driver cause.
+
+
+## [2026-10-17] fix | Recover broker notice logging with a private precreated file
+
+- Installed signed-maintenance key is independently verified without password/TTY; pinned signer matches, unsigned input is refused, and id/extra-path/separator requests return126. Actual signed diagnostics execute as UID0. Existing fixed HA/broker roles remain available.
+- Read-only query variants disprove a simple tail200 limit explanation. Actual NAS MQTT endpoint is local; same-container bridge and loopback accept CONNECT. Broker UID/GID1883 has no open log file; configured log directory is operator-owned0555 with no mosquitto.log.
+- Exact pinned Mosquitto image reproduces the failure in isolation: absent file in0555 directory emits Unable to open log file, accepts CONNECT but emits no connection notices. Precreating a0600 service-owned file then same-container HUP restores notices without changing config bytes.
+- Add a fixed-destination, bound-mount, no-follow, exclusive-create helper. Preserve directory permissions, never truncate existing logs, reject wrong owner/mode/hardlinks, and require the existing fresh named notice gate after HUP. No operating repair or authentication cutover is claimed yet.
