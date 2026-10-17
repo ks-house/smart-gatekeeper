@@ -1,3 +1,5 @@
+> Latest acceptance: [2026-10-17 authenticated cutover](broker_cutover_2026_10_17.md). Earlier pending/failed sections are historical checkpoints.
+
 # Broker principal isolation and staged migration — issue #328
 
 ## Current evidence and scope

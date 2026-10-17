@@ -7978,3 +7978,12 @@
 - Isolated same-image test3244b1a4 (private explicit subnet, dummy-only topics, no production config change) reproduces collector-before-broker exit1 versus broker-first running withRestartCount0. Source now replaces broker first, requires bounded prepared-principal MQTT5 CONNECT/DISCONNECT acceptance before collector start, and keeps the no-restart post-check. Rollback also restores broker before collector.
 - Preserve bounded failed-replacement metadata and latest200 SQLite rows in root-private700/600 files before deletion. Expose only report pointers/error type through fixed diagnosis. Collection/storage failures cannot prevent service rollback. No broad HTTP/tail-all log read.
 - All71 isolated HA/access/TLS/principal/rollback/privacy cases PASS, including actual long-credential MQTT5 varint packet and wrong-password refusal. Existing14 NAS broker tests including real retained-container rollback PASS. Full Backend/OTA checks and hosted publication follow; no second live apply by this source preparation.
+
+
+## [2026-10-17] test | Accept authenticated shared broker and NAS service recovery
+
+- Apply8fc8c77a/HA verify5b698b50 and jointc1c77a8f succeed at02:56UTC: loaded SHA33946fb5, anonymous=false2, four explicit135 refusals, Target525/SmartBoxe0323a0 fresh telemetry, collector RestartCount0 and Backend5053/all12 readiness.
+- Live ACL canary1222540f proves five PUBACK135 refusals and allowed read. SUBACK1 delivery filtering and isolated full read-matrix scope are documented honestly. Retained/log exposure and secret-rotation decisions contain no raw values.
+- HA no→unless-stopped readback and HTTP/WSS101 pass without HA stop. Influx same-image/data recovery restores exact Grafana datasource DNS/actual4086 health; Flux latest02:53:58UTC confirms storage. Earlier8086 post-check failure remains historical.
+- Eight services run/no lab containers; exact stopped broker/collector preserved/no-autostart for rollback. Signed root/fixed-role access works unattended. Today-only settings authority is not extended;441 cause/alarms and447 event JSON remain follow-ups.
+- PR449–453 passed/merged; main38993648688 cancelled without deploy steps. Primary dirty files preserved. Local WSL venv disappeared unexpectedly and was recreated with PlatformIO; no Windows tool substitution. No real actuator/additional device OTA/reboot/physical success.
