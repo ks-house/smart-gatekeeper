@@ -366,6 +366,8 @@ def build_discovery_plan(
         )
     )
 
+    # The publisher already emits HA event JSON. A scalar value template would
+    # turn that object into an invalid bare event_type string (issue447).
     access_event_config = _base_config(
         "[Gatekeeper] 출입 완료 이벤트", "access_terminal_event"
     )
@@ -373,7 +375,6 @@ def build_discovery_plan(
         {
             "state_topic": bridge_access_event_topic(target_id),
             "event_types": ["succeeded", "terminated"],
-            "value_template": "{{ value_json.event_type }}",
             "json_attributes_topic": bridge_access_event_topic(target_id),
             "qos": 1,
             "icon": "mdi:door-open",

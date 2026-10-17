@@ -1408,3 +1408,12 @@ No Target command, reboot, OTA trigger, relay action or physical success is infe
 | NAS signed maintenance | Installation pending | Root authority is not inferred from source/tests |
 
 - 2026-10-17:55 isolated HA/access/log recovery tests PASS, including real Mosquitto with missing log in0555 directory, private precreate/HUP recovery, same container/start and held MQTT connection. Backend409/13 skips and OTA contract pass. This is software evidence, with no physical movement or OTA installation.
+
+
+### 2026-10-17 HA event JSON software gate
+
+| Test | Result | Boundary |
+|---|---|---|
+| Backend focused59/full427 (14 opt-in skips) | PASS | Isolated fixtures; no physical actuator |
+| OTA contract suite78 | PASS | Software contract only |
+| Installed HA2026.8.1 callback, four projected payloads/old-template RED | PASS | Separate process, no live event injection; malformed array raises ValueError |
