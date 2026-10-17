@@ -166,3 +166,5 @@
 - [followup_acceptance_2026_10_17.md](followup_acceptance_2026_10_17.md): completed HA447/441 and SmartBox7 operating evidence, with separately verified Gmail458 reauthentication and actual inbox delivery.
 
 - [stability_checkpoint_2026_10_17.md](stability_checkpoint_2026_10_17.md): current personal health, OTA-preserving rollback of an SSH candidate, and remaining private-SFTP/backup/phone acceptance.
+
+- [ota_private_sftp_policy_admission.md](ota_private_sftp_policy_admission.md): separate admission for the reviewed private-OTA five-input transition;23 protected paths and operating gates retained.

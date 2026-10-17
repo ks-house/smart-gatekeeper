@@ -8058,3 +8058,10 @@
 - Further source audit finds personal Target and mobile publishers still use public NAS_HOST/NAS_PORT SFTP without Tailscale. Candidate SSH denial could therefore block future publication despite healthy existing HTTPS downloads.
 - Signed job22de427d verifies original firewall-disabled baseline, restores that flag and independently confirms disabled state. Keys/accounts/services unchanged; new rules are retained inactive. No failed publication or device action is induced.
 - This publisher route should have been checked before candidate activation. Amend current-state documentation and460: migrate/verify private SFTP first, then reactivate the SSH boundary. Earlier candidate kernel/connection proof remains historical and does not mean current SSH hardening is complete.
+
+## [2026-10-17] compile | Prepare separate private OTA workflow admission
+
+- Review PR463 frozen feature cb7372989605e04c0ec2b4342f382c48d46ec327: preserve public default, same pinned NAS keys and atomic signing/readback; add explicit opt-in private network and read-only status SFTP probe.
+- Keep exact23 protected paths/seven workflows and trusted validator. Change only five digests as one persistent-baseline source; retain all18 unrelated digests, signing/runtime/SSH/dependency inputs.
+- Update policy transition tests to accept exactly predecessor or reviewed bytes for the five changed inputs; keep source/namespace/mixed-bundle refusal. No policy bypass or candidate code execution in the base trusted check.
+- Admission does not configure OIDC/transport, publish an artifact, restart a service or activate the firewall. Backup461 is owner-deferred.
