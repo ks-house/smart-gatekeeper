@@ -243,6 +243,81 @@ class TargetBootRegistryTest(unittest.TestCase):
                 main._home_assistant_access_event_projection(parsed)
             )
 
+    def test_discovered_ha_event_preserves_actual_projected_json(self) -> None:
+        from backend.app.home_assistant_bridge import build_discovery_plan
+
+        publication = next(
+            item for item in build_discovery_plan(TARGET)
+            if item.topic.endswith("/access_terminal_event/config")
+        )
+        config = json.loads(publication.payload)
+        # HA's absent-template path passes the original payload to its JSON
+        # event parser. A scalar event_type template destroys that contract.
+        self.assertNotIn("value_template", config)
+        self.assertEqual(config["state_topic"], config["json_attributes_topic"])
+        for manual in (True, False):
+            for completed in (True, False):
+                with self.subTest(manual=manual, completed=completed):
+                    parsed = main._parse_canonical_target_access_event(
+                        signed_remote_terminal_payload(
+                            manual=manual, completed=completed
+                        )
+                    )
+                    self.assertIsNotNone(parsed)
+                    parsed.update(
+                        collector_target_id=TARGET,
+                        source_boot_count=8,
+                        source_sequence=7,
+                    )
+                    with patch.object(main, "COMMAND_TARGET_ID", TARGET):
+                        payload = main._home_assistant_access_event_projection(parsed)
+                    self.assertIsNotNone(payload)
+                    event = json.loads(payload)
+                    self.assertIsInstance(event, dict)
+                    self.assertIn(event["event_type"], config["event_types"])
+                    self.assertEqual(
+                        "succeeded" if completed else "terminated",
+                        event["event_type"],
+                    )
+                    self.assertEqual(
+                        {"event_type", "access_event_marker",
+                         "access_result", "access_path"},
+                        set(event),
+                    )
+                    self.assertEqual("8-7", event["access_event_marker"])
+                    self.assertNotIn("session", payload.decode())
+                    self.assertNotIn("credential", payload.decode())
+
+    def test_malformed_terminal_has_no_ha_event_payload(self) -> None:
+        parsed = main._parse_canonical_target_access_event(
+            signed_remote_terminal_payload()
+        )
+        self.assertIsNotNone(parsed)
+        parsed.update(
+            collector_target_id=TARGET, source_boot_count=8, source_sequence=7
+        )
+        invalid = [
+            ("event_code", "NOT_A_TERMINAL"),
+            ("event_outcome", "UNKNOWN"),
+            ("source_boot_count", True),
+            ("source_boot_count", 0),
+            ("source_sequence", -1),
+            ("collector_target_id", TARGET + "-other"),
+        ]
+        with patch.object(main, "COMMAND_TARGET_ID", TARGET):
+            for key, value in invalid:
+                with self.subTest(key=key, value=value):
+                    self.assertIsNone(
+                        main._home_assistant_access_event_projection(
+                            {**parsed, key: value}
+                        )
+                    )
+            for value in (None, [], "terminated", b"{"):
+                with self.subTest(malformed=value):
+                    self.assertIsNone(
+                        main._home_assistant_access_event_projection(value)
+                    )
+
     def test_canonical_worker_notifies_only_for_new_insert(self) -> None:
         inserted = MagicMock()
         events = [

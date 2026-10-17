@@ -158,3 +158,5 @@
 - [docker_log_recovery.md](docker_log_recovery.md): observed Synology db-driver writer lock, bounded read-only SQLite observation and process-preserving Docker daemon recovery.
 
 - [broker_cutover_2026_10_17.md](broker_cutover_2026_10_17.md): authenticated shared broker acceptance and remaining gates.
+
+- [ha_remaining_work_2026_10_17.md](ha_remaining_work_2026_10_17.md): HA447/441 and SmartBox7 follow-up acceptance and evidence boundaries.

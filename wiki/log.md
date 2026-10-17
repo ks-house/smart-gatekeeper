@@ -7987,3 +7987,15 @@
 - HA no→unless-stopped readback and HTTP/WSS101 pass without HA stop. Influx same-image/data recovery restores exact Grafana datasource DNS/actual4086 health; Flux latest02:53:58UTC confirms storage. Earlier8086 post-check failure remains historical.
 - Eight services run/no lab containers; exact stopped broker/collector preserved/no-autostart for rollback. Signed root/fixed-role access works unattended. Today-only settings authority is not extended;441 cause/alarms and447 event JSON remain follow-ups.
 - PR449–453 passed/merged; main38993648688 cancelled without deploy steps. Primary dirty files preserved. Local WSL venv disappeared unexpectedly and was recreated with PlatformIO; no Windows tool substitution. No real actuator/additional device OTA/reboot/physical success.
+
+## [2026-10-17] fix | Preserve Home Assistant event JSON through discovery
+
+- Owner starts a new goal covering remaining447/441/SmartBox7. Current issue bodies and signed maintenance installation are revalidated; use a clean WSL branch from merged217fe452 and preserve the dirty primary checkout.
+- New combined discovery/actual signed terminal projection regression fails on existing scalar value_template; malformed projection regression passes. Remove only that transformation, retaining event types, privacy fields, topics/QoS/identity.
+- Source-worktree backend venv is separate from primary OTA/PIO environment and installs its own hash-locked Backend dependencies. Full regression, exact-image HA parser verification and normal rollout/natural accepted event remain next. No operating configuration, synthetic event or physical command by this preparation.
+
+## [2026-10-17] test | Validate HA event correction against installed consumer
+
+- Focused59 tests PASS, Backend427/14 explicit skips PASS and OTA suite78 PASS. Resolve local Compose-only environment failure using private SHA-verified Ubuntu CLI/plugin extraction; no daemon or Windows/global settings change.
+- Signed isolated job591d1063 runs actual installed HA2026.8.1/imageb80c4cee callback/renderer: four actual projected success/termination payloads accepted, six malformed cases not accepted (array raises ValueError), retained replay ignored and old scalar template rejected. No production event/HA service mutation.
+- Recorder run9 closed_incorrect1 and NAS bootOct13 bound the historical outage; no invented stop cause. Prepare PR447 correction for normal rollout; retained discovery and natural-event operating acceptance remain pending.
