@@ -8058,3 +8058,12 @@
 - Further source audit finds personal Target and mobile publishers still use public NAS_HOST/NAS_PORT SFTP without Tailscale. Candidate SSH denial could therefore block future publication despite healthy existing HTTPS downloads.
 - Signed job22de427d verifies original firewall-disabled baseline, restores that flag and independently confirms disabled state. Keys/accounts/services unchanged; new rules are retained inactive. No failed publication or device action is induced.
 - This publisher route should have been checked before candidate activation. Amend current-state documentation and460: migrate/verify private SFTP first, then reactivate the SSH boundary. Earlier candidate kernel/connection proof remains historical and does not mean current SSH hardening is complete.
+
+## [2026-10-17] code | Defer backup and prepare opt-in private OTA publishing
+
+- Owner temporarily skips461; retain existing backups/keys and normal deployment safeguards. Stop new backup creation/copy/restore/scheduling; prioritize460.
+- Add the same exact opt-in selector to personal Target/mobile publishers. Public stays default; private requires a Tailscale IPv4/port and configured OIDC identity, rebinds the original pinned NAS keys and never falls back to public on failure.
+- Add explicit manual verify_ota_sftp=false-by-default to existing production-protected private status job. Opt-in SFTP runs only cd/pwd; no publishing or device/control effect. Retained evidence records success only after return0.
+- Extend the OTA validator through an exact hashed selector/conditional pinned join/permissions/routing admission, then retain unchanged legacy signing, atomic promotion and readback checks. Protect all five changed privilege inputs through separate policy admission.
+-149 focused OTA/publisher tests and29 Backend/NAS contracts PASS; OTA contract command PASS. Initial Docker-stub-only config-render failure resolves with existing private Linux CLI/Compose session paths, without daemon/global changes. Current trusted policy's five changed-hash refusals remain expected pending separate reviewed admission.
+- Source candidate only: no actual private publisher, transport flag, workload identity, NAS setting, firmware, APK or service change is claimed.

@@ -68,6 +68,8 @@ cannot settle that external gate.
 
 ## Prioritized remaining work
 
+**Owner update2026-10-17: recurring backup461 is temporarily deferred.** Existing backups/keys and normal deployment backup hooks are preserved. No new dump, encryption, copy, restore or schedule is performed for this deferred item. Current work prioritizes private OTA publication460.
+
 1. [461](https://github.com/ks-house/smart-gatekeeper/issues/461):
    verify recurring encrypted off-NAS backup and restore a recent snapshot.
    The newest observed migration SQL is2.37GB;115 regular files total8.79GB.
@@ -89,8 +91,7 @@ cannot settle that external gate.
    retain independent physical/operational/manual gates under epic48. Already
    fixed broker328, HA441/447 and Gmail458 are not reopened as current failures.
 
-New-feature readiness should use fresh health/evidence, a recoverable recent
-backup, the intended app actually installed and the personal acceptance record.
+For the current owner-directed sequence, new-feature readiness first addresses private publication, fresh health/evidence, the intended app actually installed and the personal acceptance record. The recurring-backup project is deferred rather than claimed complete; existing backup-first migration safeguards remain.
 This checkpoint does not declare the whole environment or commercial release
 complete. Additional general NAS settings authority is dated2026-10-17 only.
 

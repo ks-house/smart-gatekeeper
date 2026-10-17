@@ -166,3 +166,5 @@
 - [followup_acceptance_2026_10_17.md](followup_acceptance_2026_10_17.md): completed HA447/441 and SmartBox7 operating evidence, with separately verified Gmail458 reauthentication and actual inbox delivery.
 
 - [stability_checkpoint_2026_10_17.md](stability_checkpoint_2026_10_17.md): current personal health, OTA-preserving rollback of an SSH candidate, and remaining private-SFTP/backup/phone acceptance.
+
+- [ota_private_sftp_transport.md](ota_private_sftp_transport.md): opt-in pinned Tailscale OTA publishing, unchanged public default and explicit read-only private SFTP preflight; operating activation pending.

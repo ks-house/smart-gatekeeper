@@ -12,6 +12,7 @@ on:
       - 'scripts/ota_contract_gate.py'
       - 'src/**'
       - 'tests/test_ota_contract_gate.py'
+      - 'tests/test_ota_publish_transport.py'
       - 'wiki/ota_reliability_contract.md'
   push:
     branches: [main]
@@ -25,6 +26,7 @@ on:
       - 'scripts/ota_contract_gate.py'
       - 'src/**'
       - 'tests/test_ota_contract_gate.py'
+      - 'tests/test_ota_publish_transport.py'
       - 'wiki/ota_reliability_contract.md'
   workflow_dispatch:
 

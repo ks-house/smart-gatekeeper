@@ -561,6 +561,9 @@ jobs:
       group: smart-gatekeeper-personal-target-ota-main
       cancel-in-progress: false
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout exact protected Target publisher inputs
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -733,14 +736,112 @@ jobs:
           rm -f dist/gatekeeper-firmware.bin
           test ! -e dist/gatekeeper-firmware.bin
 
+      - name: Select OTA publication transport without fallback
+        id: ota_transport
+        env:
+          OTA_PUBLISH_TRANSPORT: ${{ vars.OTA_PUBLISH_TRANSPORT || 'public' }}
+          PUBLIC_NAS_HOST: ${{ secrets.NAS_HOST }}
+          PUBLIC_NAS_PORT: ${{ secrets.NAS_PORT || 22 }}
+          PUBLIC_NAS_KNOWN_HOSTS: ${{ secrets.NAS_KNOWN_HOSTS }}
+          TAILNET_NAS_HOST: ${{ vars.NAS_OTA_TAILNET_HOST }}
+          TAILNET_NAS_PORT: ${{ vars.NAS_OTA_TAILNET_PORT || 8822 }}
+          TS_OIDC_CLIENT_ID: ${{ secrets.TS_OIDC_CLIENT_ID }}
+          TS_OIDC_AUDIENCE: ${{ secrets.TS_OIDC_AUDIENCE }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ipaddress
+          import os
+          from pathlib import Path
+          import re
+          import secrets
+          import subprocess
+          import tempfile
+
+          mode = os.environ.get("OTA_PUBLISH_TRANSPORT", "") or "public"
+          if mode not in {"public", "tailscale"}:
+              raise SystemExit("unsupported OTA publication transport")
+          private = mode == "tailscale"
+          prefix = "TAILNET" if private else "PUBLIC"
+          host = os.environ.get(prefix + "_NAS_HOST", "")
+          port = os.environ.get(prefix + "_NAS_PORT", "")
+          known = os.environ.get("PUBLIC_NAS_KNOWN_HOSTS", "")
+          if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", host):
+              raise SystemExit("invalid OTA publisher host")
+          if not re.fullmatch(r"[0-9]{1,5}", port) or not 1 <= int(port) <= 65535:
+              raise SystemExit("invalid OTA publisher port")
+          port = str(int(port))
+          if not known.strip():
+              raise SystemExit("pinned OTA publisher host identity required")
+          if private:
+              try:
+                  address = ipaddress.IPv4Address(host)
+              except ipaddress.AddressValueError:
+                  raise SystemExit("literal Tailscale IPv4 required") from None
+              if address not in ipaddress.IPv4Network("100.64.0.0/10"):
+                  raise SystemExit("OTA publisher is outside Tailscale address range")
+              if not all(os.environ.get(k, "").strip() for k in ("TS_OIDC_CLIENT_ID", "TS_OIDC_AUDIENCE")):
+                  raise SystemExit("private publisher identity is not configured")
+              public_host = os.environ.get("PUBLIC_NAS_HOST", "")
+              public_port = os.environ.get("PUBLIC_NAS_PORT", "")
+              if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", public_host):
+                  raise SystemExit("invalid original publisher identity")
+              if not re.fullmatch(r"[0-9]{1,5}", public_port) or not 1 <= int(public_port) <= 65535:
+                  raise SystemExit("invalid original publisher port")
+              public_port = str(int(public_port))
+              public_label = public_host if public_port == "22" else "[" + public_host + "]:" + public_port
+              private_label = host if port == "22" else "[" + host + "]:" + port
+              with tempfile.NamedTemporaryFile(mode="w+", encoding="utf-8") as pin:
+                  pin.write(known)
+                  pin.flush()
+                  found = subprocess.run(["ssh-keygen", "-F", public_label, "-f", pin.name],
+                                         capture_output=True, text=True, check=False)
+                  if found.returncode:
+                      raise SystemExit("original publisher host pin is missing")
+                  rebound = []
+                  for line in found.stdout.splitlines():
+                      if not line or line.startswith("#"):
+                          continue
+                      parts = line.split()
+                      if len(parts) < 3 or parts[0].startswith("@"):
+                          raise SystemExit("unsupported original publisher host pin")
+                      rebound.append(private_label + " " + parts[1] + " " + parts[2])
+                  if not rebound:
+                      raise SystemExit("original publisher host pin is missing")
+                  known = "\n".join(rebound) + "\n"
+                  pin.seek(0)
+                  pin.truncate()
+                  pin.write(known)
+                  pin.flush()
+                  valid = subprocess.run(["ssh-keygen", "-l", "-E", "sha256", "-f", pin.name],
+                                         capture_output=True, check=False)
+                  if valid.returncode:
+                      raise SystemExit("invalid original publisher host key")
+          values = {"mode": mode, "host": host, "port": port, "known_hosts": known}
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              for key, value in values.items():
+                  marker = "SGK_" + secrets.token_hex(16)
+                  output.write(key + "<<" + marker + "\n" + value + "\n" + marker + "\n")
+          PY
+
+      - name: Join private OTA publisher network
+        if: steps.ota_transport.outputs.mode == 'tailscale'
+        uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OIDC_CLIENT_ID }}
+          audience: ${{ secrets.TS_OIDC_AUDIENCE }}
+          tags: tag:sgk-github-deploy
+          version: 1.94.2
+          sha256sum: c6f99a5d774c7783b56902188d69e9756fc3dddfb08ac6be4cb2585f3fecdc32
+
       - name: Stage read back and atomically publish Target OTA
         env:
-          NAS_HOST: ${{ secrets.NAS_HOST }}
+          NAS_HOST: ${{ steps.ota_transport.outputs.host }}
           NAS_USER: ${{ secrets.NAS_USER }}
           NAS_PASSWORD: ${{ secrets.NAS_PASSWORD }}
-          NAS_PORT: ${{ secrets.NAS_PORT || 22 }}
+          NAS_PORT: ${{ steps.ota_transport.outputs.port }}
           NAS_TARGET_DIR: ${{ secrets.NAS_TARGET_DIR || '/docker/smartbox_ota/firmware/' }}
-          NAS_KNOWN_HOSTS: ${{ secrets.NAS_KNOWN_HOSTS }}
+          NAS_KNOWN_HOSTS: ${{ steps.ota_transport.outputs.known_hosts }}
           TARGET_PUBLIC_KEY_HEX: ${{ secrets.OTA_SIGNING_PUBLIC_KEY_HEX }}
         run: |
           set -euo pipefail
