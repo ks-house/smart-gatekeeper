@@ -162,7 +162,7 @@ class OtaPublishTransportTest(unittest.TestCase):
             self.assertNotIn("ssh-keyscan", selector["run"])
         self.assertEqual(selectors[0], selectors[1])
 
-    def preflight(self, host="100.95.243.92", sftp_success=True, directory="/docker/smartbox_ota/firmware/"):
+    def preflight(self, host="100.95.243.92", sftp_success=True, directory="/docker/smartbox_ota/firmware/", client_stderr="", exit_code=42, real_client=False):
         config = job("backend_security.yml", "nas_private_status_preflight")
         step = step_named(config, "Verify existing OTA publisher identity over private SFTP without publishing")
         self.assertEqual(step["if"], "inputs.verify_ota_sftp")
@@ -173,7 +173,13 @@ class OtaPublishTransportTest(unittest.TestCase):
             (work / "sgk-ssh/known_hosts").write_text(
                 "[100.95.243.92]:8822 " + " ".join(self.public_key[:2]) + "\n")
             fake = work / "sshpass"
-            fake.write_text("#!/bin/sh\nprintf called > \"$RUNNER_TEMP/called\"\nexit " + ("0" if sftp_success else "42") + "\n")
+            if real_client:
+                fake.write_text("#!/usr/bin/env python3\nimport os, sys\nfrom pathlib import Path\nroot = Path(os.environ['RUNNER_TEMP'])\n(root / 'called').write_text('called')\nargs = sys.argv[1:]\nassert args[:2] == ['-e', 'sftp']\nos.execvp('sftp', ['sftp', '-S', str(root / 'fake-ssh')] + args[2:])\n")
+                ssh = work / "fake-ssh"
+                ssh.write_text("#!/usr/bin/env python3\nimport os, sys, json\nfrom pathlib import Path\n(Path(os.environ['RUNNER_TEMP']) / 'ssh-argv.json').write_text(json.dumps(sys.argv[1:]))\nsys.exit(1)\n")
+                ssh.chmod(0o700)
+            else:
+                fake.write_text("#!/usr/bin/env python3\nimport os,sys\nfrom pathlib import Path\n(Path(os.environ['RUNNER_TEMP'])/'called').write_text('called')\nsys.stderr.write(" + repr(client_stderr) + ")\nsys.exit(" + str(0 if sftp_success else exit_code) + ")\n")
             fake.chmod(0o700)
             env = {
                 **os.environ,
@@ -189,6 +195,9 @@ class OtaPublishTransportTest(unittest.TestCase):
             batch = work / "sgk-private-sftp-readonly.batch"
             commands = batch.read_text().splitlines() if batch.exists() else []
             self.assertNotIn("never-log-password", run.stdout + run.stderr + captured)
+            report = work / "ssh-argv.json"
+            import json
+            self.last_sftp_argv = json.loads(report.read_text()) if report.exists() else []
             return run.returncode, captured, commands, (work / "called").exists()
 
     def test_manual_preflight_records_only_successful_readonly_session(self):
@@ -202,7 +211,8 @@ class OtaPublishTransportTest(unittest.TestCase):
         rc, evidence, commands, called = self.preflight(sftp_success=False)
         self.assertNotEqual(rc, 0)
         self.assertTrue(called)
-        self.assertEqual(evidence, "")
+        self.assertIn("private_sftp_readonly_ok=false", evidence)
+        self.assertIn("private_sftp_failure_category=SFTP_CLIENT_FAILURE", evidence)
 
     def test_manual_preflight_rejects_non_tailnet_and_traversal_before_auth(self):
         for changes in [{"host": "100.1.2.3"}, {"directory": "/docker/../private"}]:
@@ -259,6 +269,50 @@ class OtaPublishTransportTest(unittest.TestCase):
                 gate._validated_ota_transport_job(filename, canonical, anchor, count),
                 canonical,
             )
+
+
+
+    def test_real_openssh_batch_parser_keeps_password_prompt_enabled(self):
+        rc, evidence, commands, called = self.preflight(real_client=True)
+        self.assertNotEqual(rc, 0)  # Fake SSH has no server; no network is used.
+        self.assertTrue(called)
+        self.assertNotIn("private_sftp_readonly_ok=true", evidence)
+        options = []
+        for index, value in enumerate(self.last_sftp_argv):
+            if value.startswith("-o") and "batchmode" in value.lower():
+                options.append(value)
+            elif value == "-o" and index + 1 < len(self.last_sftp_argv):
+                next_value = self.last_sftp_argv[index + 1]
+                if "batchmode" in next_value.lower():
+                    options.extend([value, next_value])
+        result = subprocess.run(["ssh", "-G", "-F", "/dev/null", *options, "example.invalid"],
+                                capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("batchmode no", result.stdout.splitlines())
+
+    def test_failure_receipt_contains_only_closed_categories_and_exit_code(self):
+        cases = [
+            (5, "Permission denied (password): never-log-password", "AUTHENTICATION"),
+            (255, "Host key verification failed: never-log-password", "HOST_IDENTITY"),
+            (1, "Couldn't canonicalize: No such file never-log-password", "REMOTE_DIRECTORY"),
+            (124, "never-log-password", "NETWORK_TIMEOUT"),
+        ]
+        for code, message, category in cases:
+            rc, evidence, commands, called = self.preflight(
+                sftp_success=False, client_stderr=message, exit_code=code)
+            self.assertNotEqual(rc, 0)
+            self.assertTrue(called)
+            self.assertIn("private_sftp_readonly_ok=false", evidence)
+            self.assertIn("private_sftp_failure_category=" + category, evidence)
+            self.assertIn("private_sftp_exit_code=" + str(code), evidence)
+            self.assertNotIn(message, evidence)
+
+    def test_always_upload_keeps_raw_client_diagnostics_private(self):
+        config = job("backend_security.yml", "nas_private_status_preflight")
+        upload = step_named(config, "Upload NAS private status evidence")
+        self.assertEqual(upload["if"], "always()")
+        self.assertEqual(upload["with"]["path"], "build/nas-private-status.evidence")
+        self.assertEqual(upload["with"]["if-no-files-found"], "error")
 
 
 
