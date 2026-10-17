@@ -8095,3 +8095,9 @@
 - Check all three Target/primary APK/fallback directories using only cd/pwd. Reuse exact publisher selector/server pins; private raw diagnostics and closed sanitized failure evidence remain separate.
 - Owner has completed Tailscale login only. No new tag, grant or OIDC credential is created without the concrete final approval. Public transport/firewall baseline and deferred461 remain unchanged.
 -131 focused OTA/selector/atomic publisher tests and29 Backend/NAS contracts PASS; OTA contract command PASS. Correct service proof and actual private publication remain pending; preserve original public route until then.
+
+## [2026-10-17] compile | Admit the separate OTA SFTP service and role
+
+- Review467 frozen sourcefeedb9411ea065032a07847ac4780c0e87635906; update exactly four protected digests while retaining23 paths/seven workflows, trusted validator and19 unrelated inputs.
+- Keep predecessor/admitted transition limited to those four paths; preserve source/namespace/mixed-bundle refusal.131 focused OTA regressions and29 Backend/NAS contracts PASS.
+- This source admission creates no identity/network grant, activates no transport/firewall and publishes no device artifact. Owner access approval and actual private SFTP/publication proof remain separate; backup461 stays deferred.
