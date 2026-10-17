@@ -7999,3 +7999,10 @@
 - Focused59 tests PASS, Backend427/14 explicit skips PASS and OTA suite78 PASS. Resolve local Compose-only environment failure using private SHA-verified Ubuntu CLI/plugin extraction; no daemon or Windows/global settings change.
 - Signed isolated job591d1063 runs actual installed HA2026.8.1/imageb80c4cee callback/renderer: four actual projected success/termination payloads accepted, six malformed cases not accepted (array raises ValueError), retained replay ignored and old scalar template rejected. No production event/HA service mutation.
 - Recorder run9 closed_incorrect1 and NAS bootOct13 bound the historical outage; no invented stop cause. Prepare PR447 correction for normal rollout; retained discovery and natural-event operating acceptance remain pending.
+
+## [2026-10-17] code | Prepare durable HA ingress and lifecycle observation
+
+- PR455 b2bcada passes Backend39006628363/OTA39006628358/trusted39006628381; merged64b5c2f. Owner-authorized normal production run39006782137 is approved through existing production environment and succeeds. Retained/natural HA event readback remains independent.
+- Add a separate fixed-origin/owner root observer: HTTP plus real verified TLS WebSocket/HA protocol, bounded finite Docker lifecycle events, persistent volume1 private rotating evidence, two-sample failure/recovery and durable owner-only DSM notification retries. No HA/Docker/device repair, broad log query or credential read.
+- Twelve focused actual TLS/privacy/queue/filesystem tests and full Backend439/14 explicit skips PASS. Actual NAS candidate preflight021c8c58 succeeds with zero errors and no alert/service install. First candidate refused an incorrect origin constant before mutation; bind measured HA4123.
+- Preserved recorder/Container Manager evidence bounds unknown original termination rather than inventing a cause. New monitoring installation/notification delivery and independent external proof remain next. Current NAS setting authority stays limited to2026-10-17.
