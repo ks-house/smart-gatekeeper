@@ -824,5 +824,203 @@ class HaLoggingRecoveryTest(unittest.TestCase):
                 m.refresh_logging({"plan": {}}, helper)
             helper.docker.api.assert_not_called()
 
+
+
+class SignedMaintenanceTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        cls.signer = rsa.generate_private_key(public_exponent=65537, key_size=3072)
+        cls.private_bytes = cls.signer.private_bytes(serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+        cls.public_bytes = cls.signer.public_key().public_bytes(serialization.Encoding.PEM,
+            serialization.PublicFormat.SubjectPublicKeyInfo)
+
+    def setUp(self):
+        import shutil
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name);self.state = self.root/"state";self.state.mkdir(mode=0o700)
+        (self.root/"security").mkdir()
+        (self.root/"security/signer-public.pem").write_bytes(self.public_bytes)
+        (self.root/"signer-private.pem").write_bytes(self.private_bytes)
+        (self.root/"signer-private.pem").chmod(0o600)
+        self.openssl = shutil.which("openssl")
+        self.assertTrue(self.openssl)
+        spec = importlib.util.spec_from_file_location(
+            "signed_gateway_test", ROOT/"scripts/nas_maintenance/gateway.py")
+        self.g = importlib.util.module_from_spec(spec);spec.loader.exec_module(self.g)
+        self.g.ROOT = self.root;self.g.STATE = self.state
+        spec = importlib.util.spec_from_file_location(
+            "signed_client_test", ROOT/"scripts/nas_maintenance/client.py")
+        self.c = importlib.util.module_from_spec(spec);spec.loader.exec_module(self.c)
+        self.config = {"openssl_path": self.openssl}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def packet(self, code=b'import json\nprint(json.dumps({"fixture":True}))\n', identifier=None):
+        return self.c.envelope(code, "readonly-fixture", 5, self.root, identifier)
+
+    def test_real_rsa_signature_accepts_only_exact_manifest_and_script(self):
+        raw = self.packet();manifest, script = self.g.validate(raw, self.config)
+        self.assertEqual("readonly-fixture", manifest["operation"])
+        value = json.loads(raw);value["manifest"]["operation"] = "different-action"
+        with self.assertRaisesRegex(ValueError, "signature rejected"):
+            self.g.validate(json.dumps(value).encode(), self.config)
+        value = json.loads(raw);value["script"] = __import__("base64").b64encode(b"print('changed')").decode()
+        with self.assertRaisesRegex(ValueError, "content mismatch"):
+            self.g.validate(json.dumps(value).encode(), self.config)
+
+    def test_expiry_future_clock_and_unbounded_deadline_refused(self):
+        value = json.loads(self.packet())
+        epoch = value["manifest"]["issued_at"]
+        with self.assertRaises(ValueError):
+            self.g.validate(json.dumps(value).encode(), self.config, now=epoch+901)
+        with self.assertRaises(ValueError):
+            self.g.validate(json.dumps(value).encode(), self.config, now=epoch-61)
+        value["manifest"]["timeout_seconds"] = 901
+        with self.assertRaises(ValueError):
+            self.g.validate(json.dumps(value).encode(), self.config, now=epoch)
+
+    def test_unknown_fields_base64_and_signature_fail_closed(self):
+        value = json.loads(self.packet());value["path"] = "/etc/sudoers"
+        with self.assertRaises(ValueError):
+            self.g.validate(json.dumps(value).encode(), self.config)
+        value = json.loads(self.packet());value["signature"] = __import__("base64").b64encode(bytes(384)).decode()
+        with self.assertRaisesRegex(ValueError, "signature rejected"):
+            self.g.validate(json.dumps(value).encode(), self.config)
+        value["script"] = "!invalid-base64!"
+        with self.assertRaises(ValueError):
+            self.g.validate(json.dumps(value).encode(), self.config)
+
+    def test_same_request_replay_never_spawns_another_worker(self):
+        (self.state/"requests").mkdir()
+        raw = self.packet(identifier="a"*32)
+        with patch.object(self.g, "control", side_effect=lambda p, limit=524288:p.read_bytes()), \
+             patch.object(self.g, "launch_worker", return_value=MagicMock(pid=987654)) as spawn:
+            first = self.g.submit(raw, self.config)
+            second = self.g.submit(raw, self.config)
+        self.assertEqual(first["id"], second["id"])
+        self.assertTrue(second["idempotent"]);self.assertEqual(1, spawn.call_count)
+
+    def test_cached_client_retry_preserves_signed_bytes(self):
+        first = self.packet(identifier="b"*32)
+        second = self.packet(identifier="b"*32)
+        self.assertEqual(first, second)
+        with self.assertRaisesRegex(ValueError, "differs"):
+            self.packet(code=b"print('other')\n", identifier="b"*32)
+
+    def test_invalid_signature_cannot_create_a_request_directory(self):
+        (self.state/"requests").mkdir()
+        value = json.loads(self.packet());value["manifest"]["operation"] = "tampered"
+        with self.assertRaises(ValueError):
+            self.g.submit(json.dumps(value).encode(), self.config)
+        self.assertEqual([], list((self.state/"requests").iterdir()))
+
+    def test_result_receipt_does_not_publish_stderr(self):
+        directory = self.state/"execution";directory.mkdir()
+        (directory/"script.py").write_text(
+            'import json,sys\nprint("fixture-private-stderr",file=sys.stderr)\nprint(json.dumps({"ok":True}))\n')
+        result = self.g.execute(directory, {"timeout_seconds": 5})
+        self.assertEqual(0, result["returncode"])
+        self.assertTrue(result["json_result_available"])
+        self.assertNotIn("fixture-private-stderr", json.dumps(result))
+        self.assertEqual({"ok": True}, json.loads((directory/"result.json").read_text()))
+        self.assertEqual(0o600, stat.S_IMODE((directory/"stderr.private").stat().st_mode))
+
+    def test_execution_timeout_is_terminal_without_a_result(self):
+        directory = self.state/"timeout";directory.mkdir()
+        (directory/"script.py").write_text('import time\ntime.sleep(10)\n')
+        result = self.g.execute(directory, {"timeout_seconds": 1})
+        self.assertTrue(result["timed_out"]);self.assertFalse((directory/"result.json").exists())
+
+    def test_ordinary_shell_and_file_requests_are_refused(self):
+        import subprocess
+        script = ROOT/"scripts/nas_maintenance/ssh_dispatch.sh"
+        for command in ("id", "submit /tmp/code", "status; id", "result ../other", "sh"):
+            env = dict(os.environ);env["SSH_ORIGINAL_COMMAND"] = command
+            result = subprocess.run(["sh", str(script)], env=env, capture_output=True)
+            self.assertEqual(126, result.returncode)
+
+    def test_untrusted_control_owner_and_symlink_are_refused(self):
+        path = self.root/"other";path.write_text("fixture")
+        link = self.root/"link";link.symlink_to(path)
+        with self.assertRaises(ValueError):
+            self.g.control(link)
+        fake = MagicMock()
+        fake.lstat.return_value.st_mode = stat.S_IFREG|0o600
+        fake.lstat.return_value.st_uid = 12345
+        with self.assertRaises(ValueError):
+            self.g.control(fake)
+
+
+@unittest.skipUnless(os.getenv("RUN_HA_PREFLIGHT_DOCKER") == "1", "root signed-maintenance install fixture opt-in")
+class ActualSignedMaintenanceBootstrapTest(unittest.TestCase):
+    def test_install_preserves_old_keys_and_rolls_back_failed_privilege_registration(self):
+        import subprocess
+        image = subprocess.check_output(
+            ["docker", "image", "inspect", "python:3.12.13-slim-bookworm",
+             "--format", "{{.Id}}"], text=True).strip()
+        code = r"""
+import hashlib,importlib.util,json,os,pathlib,pwd,subprocess,sys,tempfile,types
+sys.path.insert(0,'/repo')
+spec=importlib.util.spec_from_file_location('ha_boot','/repo/scripts/nas_maintenance/bootstrap.py')
+m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+real_pwd=pwd.getpwnam
+with tempfile.TemporaryDirectory(prefix='ha-fixed-key-fixture-') as tmp:
+ base=pathlib.Path(tmp);base.chmod(0o711)
+ local=base/'usr/local/lib';local.mkdir(parents=True)
+ for p in (base/'usr',base/'usr/local',local):p.chmod(0o755)
+ home=base/'home';home.mkdir();home.chmod(0o755)
+ user_home=home/'operator';user_home.mkdir(mode=0o700);os.chown(user_home,65534,65534)
+ ssh=user_home/'.ssh';ssh.mkdir(mode=0o700);os.chown(ssh,65534,65534)
+ auth=ssh/'authorized_keys';original=b'ssh-ed25519 existing-deploy-key\nssh-ed25519 existing-broker-key\n'
+ auth.write_bytes(original);auth.chmod(0o600);os.chown(auth,65534,65534)
+ etc=base/'etc';etc.mkdir();sudoers=etc/'sudoers';sudo_original=b'root ALL=(ALL) ALL\n';sudoers.write_bytes(sudo_original);sudoers.chmod(0o440)
+ m.ROOT=local/'smart-gatekeeper-maintenance';m.PROGRAM=m.ROOT/'bin/gateway.py';m.SUDOERS=sudoers;m.PYTHON=sys.executable
+ m.DESTINATIONS={name:m.ROOT/relative for name,relative in {'gateway.py':'bin/gateway.py','ssh_dispatch.sh':'bin/ssh_dispatch.sh','signer-public.pem':'security/signer-public.pem'}.items()}
+ audit=pathlib.Path('/var/run/sgk-broker-audit');audit.mkdir(parents=True,exist_ok=True)
+ user=types.SimpleNamespace(pw_uid=65534,pw_gid=65534,pw_dir=str(user_home))
+ m.pwd.getpwnam=lambda name:user if name=='nobody' else real_pwd(name)
+ package=base/'package';package.mkdir()
+ payload={'gateway.py':b'print("{}")\n','ssh_dispatch.sh':b'#!/bin/sh\nexit 126\n','signer-public.pem':b'fixture-public-only\n','config.json':json.dumps({'owner':'nobody'}).encode(),'maintenance-key.pub':b'ssh-ed25519 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA fixture-key'}
+ manifest={}
+ for name,raw in payload.items():(package/name).write_bytes(raw);manifest[name]=hashlib.sha256(raw).hexdigest()
+ raw=json.dumps(manifest).encode();(package/'manifest.json').write_bytes(raw);pin=hashlib.sha256(raw).hexdigest()
+ fail={'enabled':True};seen=[]
+ def run(args,**kw):
+  seen.append(args)
+  if fail['enabled'] and args[:3]==['/usr/bin/sudo','-n',str(m.PROGRAM)]:
+   raise RuntimeError('injected no-password sudo refusal')
+  return types.SimpleNamespace(stdout=b'{"schema_version":1}',stderr=b'',returncode=0)
+ m.run=run
+ m.shutil.which=lambda name:sys.executable
+ try:m.install(package,pin)
+ except RuntimeError as e:assert 'injected' in str(e)
+ else:raise AssertionError('failed registration unexpectedly succeeded')
+ assert sudoers.read_bytes()==sudo_original and auth.read_bytes()==original
+ assert not (m.ROOT/'state/setup.json').exists()
+ fail['enabled']=False;m.install(package,pin)
+ contents=auth.read_bytes()
+ assert contents.startswith(original) and contents.count(b'fixture-key')==1
+ assert b'restrict,from="100.64.0.0/10,127.0.0.1",command="' in contents
+ receipt=json.loads((m.ROOT/'state/setup.json').read_text())
+ assert receipt['interactive_shell'] is False and receipt['signed_root_code_execution'] is True and receipt['existing_broker_key_preserved'] is True
+ assert len(receipt['commands'])==3
+ assert auth.stat().st_uid==65534 and (auth.stat().st_mode&0o777)==0o600
+ assert sudoers.read_bytes().startswith(sudo_original)
+ assert b'NOPASSWD:' in sudoers.read_bytes() and b' gateway.py *' not in sudoers.read_bytes()
+ print('signed_maintenance_install_preservation_and_registration_rollback_passed=true')
+"""
+        result = subprocess.run(
+            ["docker", "run", "--rm", "-i", "--read-only", "--network", "none",
+             "--user", "0:0", "--tmpfs", "/tmp:rw,nosuid,nodev",
+             "--tmpfs", "/run:rw,nosuid,nodev", "-v", str(ROOT)+":/repo:ro",
+             "--entrypoint", "python", image, "-B", "-I", "-"],
+            input=code, capture_output=True, text=True, timeout=30)
+        self.assertEqual(0, result.returncode, result.stderr[-2500:])
+        self.assertIn("signed_maintenance_install_preservation_and_registration_rollback_passed=true", result.stdout)
+
 if __name__ == "__main__":
     unittest.main()

@@ -1398,3 +1398,11 @@ No Target command, reboot, OTA trigger, relay action or physical success is infe
 |---|---|---|
 | HA/forced-key operations suite | PASS42 | Includes actual Mosquitto HUP with unchanged held connection, archive/owner and root key-install rollback fixtures |
 | Current NAS environment | Installation pending | Existing keys unchanged; no logging reload/account migration by preparation |
+
+
+## 2026-10-17 signed project maintenance preparation
+
+| Check | Result | Scope |
+|---|---|---|
+| Isolated HA/access/signed-maintenance suite | PASS53 | Real crypto, timeout, replay, root installation and existing broker/HA fixtures |
+| NAS signed maintenance | Installation pending | Root authority is not inferred from source/tests |
