@@ -1,3 +1,5 @@
+> Latest acceptance: [2026-10-17 authenticated cutover](broker_cutover_2026_10_17.md). Earlier pending/failed sections are historical checkpoints.
+
 # Signed NAS project maintenance
 
 The owner requested unattended administration across Smart Gatekeeper and SmartBox. The existing deployment, broker and HA fixed-command keys remain intact. Their fixed commands intentionally cannot replace root-owned operator code; a separate signed maintenance path handles reviewed diagnostics and maintenance updates without repeated password entry after initial registration.

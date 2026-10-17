@@ -1,3 +1,5 @@
+> Latest acceptance: [2026-10-17 authenticated cutover](broker_cutover_2026_10_17.md). Earlier pending/failed sections are historical checkpoints.
+
 # Dedicated NAS broker maintenance access
 
 The owner explicitly requests unattended broker maintenance after repeated

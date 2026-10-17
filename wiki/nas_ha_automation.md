@@ -1,3 +1,5 @@
+> Latest acceptance: [2026-10-17 authenticated cutover](broker_cutover_2026_10_17.md). Earlier pending/failed sections are historical checkpoints.
+
 # Dedicated unattended HA operations
 
 The owner requested that NAS diagnosis and migration no longer require repeated password entry. The existing deploy and six-command broker keys remain unchanged. A separate tailnet/loopback-only Ed25519 key reaches six fixed HA operations through a forced SSH command and exact passwordless sudo rules.

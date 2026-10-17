@@ -156,3 +156,5 @@
 - [signed_nas_maintenance.md](signed_nas_maintenance.md): privileged signed project maintenance, separate signer/transport keys, replay/expiry controls and operating evidence boundaries.
 
 - [docker_log_recovery.md](docker_log_recovery.md): observed Synology db-driver writer lock, bounded read-only SQLite observation and process-preserving Docker daemon recovery.
+
+- [broker_cutover_2026_10_17.md](broker_cutover_2026_10_17.md): authenticated shared broker acceptance and remaining gates.
