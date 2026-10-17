@@ -8067,3 +8067,10 @@
 - Extend the OTA validator through an exact hashed selector/conditional pinned join/permissions/routing admission, then retain unchanged legacy signing, atomic promotion and readback checks. Protect all five changed privilege inputs through separate policy admission.
 -149 focused OTA/publisher tests and29 Backend/NAS contracts PASS; OTA contract command PASS. Initial Docker-stub-only config-render failure resolves with existing private Linux CLI/Compose session paths, without daemon/global changes. Current trusted policy's five changed-hash refusals remain expected pending separate reviewed admission.
 - Source candidate only: no actual private publisher, transport flag, workload identity, NAS setting, firmware, APK or service change is claimed.
+
+## [2026-10-17] compile | Prepare separate private OTA workflow admission
+
+- Review PR463 frozen feature cb7372989605e04c0ec2b4342f382c48d46ec327: preserve public default, same pinned NAS keys and atomic signing/readback; add explicit opt-in private network and read-only status SFTP probe.
+- Keep exact23 protected paths/seven workflows and trusted validator. Change only five digests as one persistent-baseline source; retain all18 unrelated digests, signing/runtime/SSH/dependency inputs.
+- Update policy transition tests to accept exactly predecessor or reviewed bytes for the five changed inputs; keep source/namespace/mixed-bundle refusal. No policy bypass or candidate code execution in the base trusted check.
+- Admission does not configure OIDC/transport, publish an artifact, restart a service or activate the firewall. Backup461 is owner-deferred.
