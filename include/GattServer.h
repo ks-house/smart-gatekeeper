@@ -96,6 +96,11 @@ class GattServer {
   static void notifyRelayOn(uint64_t now_ms);
   static void notifyRelayOff(uint64_t now_ms, bool failsafe);
   static void notifySessionCompleted(uint64_t now_ms);
+  // Serialize the complete authorized manual handoff with NimBLE admission.
+  // The operation must not perform network I/O and returns before releasing
+  // the recursive protocol lock. It does not authorize a caller by itself.
+  static bool runExclusiveControl(bool (*operation)(void*), void* context);
+
   static void notifySessionTerminated(uint64_t now_ms,
                                       sgk::EventReason reason);
   // Drain callback-deferred GATT evidence into the shared MQTT/NVS outbox and

@@ -160,7 +160,8 @@ static sgk::TargetAccessFsm g_access_fsm(
       const uint64_t now_ms = millis();
       if (std::strcmp(event, "session_completed") == 0 ||
           std::strcmp(event, "session_terminated") == 0 ||
-          std::strcmp(event, "session_terminated_failsafe") == 0) {
+          std::strcmp(event, "session_terminated_failsafe") == 0 ||
+          std::strcmp(event, "session_superseded") == 0) {
         UltrasonicSensor::qualification.finish(static_cast<uint32_t>(now_ms));
         if (UltrasonicSensor::sessions.active() &&
             !UltrasonicSensor::sessions.finish(static_cast<uint32_t>(now_ms),
@@ -203,6 +204,11 @@ static sgk::TargetAccessFsm g_access_fsm(
         if (remote_sequence != 0) {
           GattServer::advanceEventSequence(remote_sequence);
         }
+      } else if (std::strcmp(event, "session_superseded") == 0) {
+        GattServer::notifySessionTerminated(
+            now_ms, sgk::EventReason::kSessionSuperseded);
+        // Priority preemption is restricted to a local automatic ARM, never
+        // an outstanding signed-MQTT lifecycle (N/N-1 terminal compatibility).
       } else if (std::strcmp(event, "session_terminated") == 0) {
         GattServer::notifySessionTerminated(now_ms,
                                             sgk::EventReason::kArmTimeout);
@@ -503,6 +509,14 @@ bool triggerArm() {
 // ─────────────────────────────────────────────────────────────
 // triggerManualDoorOpen() — MQTT 원격 수동 개방 명령
 // ─────────────────────────────────────────────────────────────
+// No TLS/relay effect here. The signed-command caller holds GATT admission
+// across this retirement and the subsequent manual lifecycle bind/dispatch.
+bool prepareManualRemoteOverride() {
+  if (GattServer::isOtaBusy() || GattServer::hasPendingIngress() ||
+      GattServer::hasActiveOutput() || relay.isOn()) return false;
+  return g_access_fsm.supersedeArmedForManual(millis());
+}
+
 bool triggerManualDoorOpen() {
   nextPulseSource = sgk::PassagePulseSource::kRemoteManual;
   if (g_access_fsm.handleManualRemoteOpen(millis(), RELAY_HOLD_MS, g_relay_cooldown_ms)) {
@@ -853,7 +867,11 @@ void loop() {
   }
 
   bool accessCritical = isAccessPathCritical();
-  if (accessCritical) MqttManager::deferForAccessCritical();
+  if (accessCritical) {
+    MqttManager::deferForAccessCritical();
+    MqttManager::serviceAccessCriticalIngress();
+    accessCritical = isAccessPathCritical();
+  }
 
   // A reboot command accepted in an earlier loop remains staged while a racing
   // verified access finishes. This check runs even when accessCritical keeps

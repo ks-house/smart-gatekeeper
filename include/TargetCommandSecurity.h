@@ -145,6 +145,13 @@ class TargetCommandSecurity {
   CommandResult authorize(const SignedCommandEnvelope& envelope,
                           uint64_t trusted_unix_seconds,
                           bool clock_trusted);
+  // Critical-path receiver: authorize + durable replay admission precede the
+  // supplied manual-only effect. Rejected/failed commands are retired rather
+  // than replayed when the sensor/relay critical window later ends.
+  CommandResult dispatchPriorityManual(const SignedCommandEnvelope& envelope,
+                                      uint64_t trusted_unix_seconds,
+                                      bool clock_trusted,
+                                      bool (*effect)(void*), void* context);
   bool markCompleted(const SignedCommandEnvelope& envelope);
 
   static const char* actionName(CommandAction action);

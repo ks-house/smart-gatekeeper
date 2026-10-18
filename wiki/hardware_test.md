@@ -1435,3 +1435,15 @@ No Target command, reboot, OTA trigger, relay action or physical success is infe
 | HA event JSON natural terminal911-152 | PASS | Integrity-verified outbox matches actual HA event state; not physical passage |
 | HA health/lifecycle and owner DSM failure/recovery route | PASS | Real HA not stopped; original cause/NAS reboot/email unverified |
 | SmartBox installed manifest failure404 then no-update200 | PASS | VERSION phase, IDLE/monotonic continuity; no actuator or new firmware install |
+
+
+## 2026-10-18 manual priority isolated software validation
+
+| Check | Result | Boundary |
+|---|---|---|
+| Production C++ security/FSM and blocked receive transport | PASS | Forged/expired/replayed/busy/NVS failures do not produce extra effects in the isolated model |
+| Root suite |490 PASS/14 explicit skips | Not physical-door proof |
+| Latest focused suite |34 PASS/one broker skip | Actual production components with fake transport/storage |
+| Default C6 build and enabled-GATT local lab experiment | PASS | Public fixture only; lab input-pin follow-up removed after approval-review rejection |
+| OTA contract/trusted policy | PASS/42 tests PASS | Reviewed release input and validator pins unchanged |
+| Actual installed version and natural manual/physical use | Pending | No unattended actuation; sensor NO_ECHO/FAULT root cause remains separate |

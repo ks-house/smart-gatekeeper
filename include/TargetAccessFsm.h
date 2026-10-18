@@ -44,6 +44,11 @@ class TargetAccessFsm {
 
   bool handleAuthAbort(uint32_t now_ms, const char* reason = "auth_aborted");
 
+  // Called only after a fresh signed manual command was authorized. Retires
+  // the automatic sensor wait without energizing the relay; the caller holds
+  // GATT admission serialization until it binds/dispatches the manual lifecycle.
+  bool supersedeArmedForManual(uint32_t now_ms);
+
   // Manual remote trigger (MQTT): only allowed when IDLE.
   bool handleManualRemoteOpen(uint32_t now_ms,
                               uint32_t hold_duration_ms = 1000,
@@ -74,6 +79,7 @@ class TargetAccessFsm {
 
   GateState state_ = GateState::IDLE;
   bool is_armed_ = false;
+  bool local_sensor_wait_ = false;
   bool relay_on_ = false;
 
   uint32_t state_start_ms_ = 0;

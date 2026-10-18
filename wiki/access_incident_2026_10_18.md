@@ -69,3 +69,12 @@ query bounds under a0700 local directory; public source contains no operational
 timestamps, raw phone/Target/session identifiers, credentials or log dumps.
 No door/relay command, reboot, OTA, service/NAS change, sensor threshold/FSM edit,
 or deferred backup461 action was performed.
+
+
+## Owner-authorized correction
+
+The owner subsequently requested a fix. See
+[manual_open_priority.md](manual_open_priority.md) for the copy-only receive
+worker and fresh signed-manual priority over a local automatic sensor wait.
+The original evidence remains historical. Source/tests do not by themselves
+prove installation, a healthy sensor or physical door motion.

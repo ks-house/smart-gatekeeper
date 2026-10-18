@@ -9,6 +9,7 @@ TargetAccessFsm::TargetAccessFsm(RelayDriveFn relay_drive,
 void TargetAccessFsm::begin(uint32_t now_ms) {
   state_ = GateState::IDLE;
   is_armed_ = false;
+  local_sensor_wait_ = false;
   relay_on_ = false;
   state_start_ms_ = now_ms;
   setRelay(false);
@@ -120,6 +121,7 @@ bool TargetAccessFsm::handleAuthSuccess(uint32_t now_ms,
   }
 
   is_armed_ = true;
+  local_sensor_wait_ = true;
   pre_arm_duration_ms_ = arm_duration_ms;
   pre_arm_start_ms_ = now_ms;
   cooldown_duration_ms_ = cooldown_duration_ms;
@@ -170,6 +172,20 @@ bool TargetAccessFsm::handleAuthAbort(uint32_t now_ms, const char* reason) {
   return false;
 }
 
+bool TargetAccessFsm::supersedeArmedForManual(uint32_t now_ms) {
+  if (state_ != GateState::ARMED || !is_armed_ || !local_sensor_wait_ ||
+      relay_on_) return false;
+  is_armed_ = false;
+  local_sensor_wait_ = false;
+  state_ = GateState::IDLE;
+  state_start_ms_ = now_ms;
+  if (event_emit_ != nullptr) {
+    event_emit_("session_superseded",
+                "Automatic sensor wait superseded by authorized manual request");
+  }
+  return true;
+}
+
 bool TargetAccessFsm::handleManualRemoteOpen(uint32_t now_ms,
                                              uint32_t hold_duration_ms,
                                              uint32_t cooldown_duration_ms) {
@@ -199,6 +215,7 @@ bool TargetAccessFsm::handlePreArm(uint32_t now_ms, uint32_t pre_arm_duration_ms
     return false;
   }
   is_armed_ = true;
+  local_sensor_wait_ = false;
   pre_arm_duration_ms_ = pre_arm_duration_ms;
   pre_arm_start_ms_ = now_ms;
   state_ = GateState::ARMED;

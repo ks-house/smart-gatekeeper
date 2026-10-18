@@ -3276,6 +3276,103 @@ void testSignedCommandDurableReplayAndMutations() {
         sgk::CommandResult::kExpired);
 }
 
+struct PriorityManualFixture {
+  sgk::TargetAccessFsm fsm;
+  int attempts = 0;
+  int effects = 0;
+  MemoryCommandStorage* fail_after_effect = nullptr;
+};
+
+bool priorityManualEffect(void* context) {
+  auto& fixture = *static_cast<PriorityManualFixture*>(context);
+  ++fixture.attempts;
+  if (!fixture.fsm.supersedeArmedForManual(2000)) return false;
+  const bool completed = fixture.fsm.handleManualRemoteOpen(2000, 1000, 2000);
+  if (completed) ++fixture.effects;
+  if (fixture.fail_after_effect) fixture.fail_after_effect->fail_writes = true;
+  return completed;
+}
+
+void testPriorityManualAuthorizationAndSensorWait() {
+  MemoryCommandStorage storage;
+  FixtureCommandVerifier verifier;
+  sgk::TargetCommandSecurity security(&storage, &verifier);
+  CHECK(security.begin("target-a", "tenant-a", "door-a", "boot-a", 7));
+  PriorityManualFixture fixture;
+  fixture.fsm.begin(1000);
+  CHECK(fixture.fsm.handleAuthPending(1100));
+  CHECK(fixture.fsm.handleAuthSuccess(1200, 60000, 2000));
+  auto command = fixtureCommand();
+  auto bad = command;
+  bad.signature[0] = 0;
+  CHECK(security.dispatchPriorityManual(bad, 1800000001, true,
+        priorityManualEffect, &fixture) == sgk::CommandResult::kBadSignature);
+  CHECK(fixture.attempts == 0 && fixture.fsm.isArmed());
+  auto expired = command;
+  std::snprintf(expired.nonce, sizeof(expired.nonce), "expiry-boundary");
+  CHECK(security.dispatchPriorityManual(expired, 1800000060, true,
+        priorityManualEffect, &fixture) == sgk::CommandResult::kExpired);
+  CHECK(security.dispatchPriorityManual(command, 0, false,
+        priorityManualEffect, &fixture) == sgk::CommandResult::kClockUntrusted);
+  CHECK(fixture.attempts == 0 && fixture.fsm.isArmed());
+  storage.fail_writes = true;
+  CHECK(security.dispatchPriorityManual(command, 1800000001, true,
+        priorityManualEffect, &fixture) == sgk::CommandResult::kReplayStorageFailure);
+  CHECK(fixture.attempts == 0 && fixture.fsm.isArmed());
+  storage.fail_writes = false;
+  auto configuration = command;
+  configuration.action = sgk::CommandAction::kSetDuration;
+  std::snprintf(configuration.nonce, sizeof(configuration.nonce), "nonmanual");
+  CHECK(security.dispatchPriorityManual(configuration, 1800000001, true,
+        priorityManualEffect, &fixture) == sgk::CommandResult::kEffectRejected);
+  CHECK(fixture.attempts == 0 && fixture.fsm.isArmed());
+  CHECK(security.dispatchPriorityManual(configuration, 1800000002, true,
+        priorityManualEffect, &fixture) == sgk::CommandResult::kDuplicateCompleted);
+
+  CHECK(security.dispatchPriorityManual(command, 1800000001, true,
+        priorityManualEffect, &fixture) == sgk::CommandResult::kAccepted);
+  CHECK(fixture.effects == 1 && fixture.fsm.state() == GateState::RELAY_HOLD);
+  CHECK(!fixture.fsm.isArmed() && fixture.fsm.isRelayOn());
+  CHECK(fixture.fsm.otaSafeState() == OtaSafeState::RELAY_ACTIVE);
+  CHECK(!fixture.fsm.handleAuthPending(2100));
+  CHECK(security.dispatchPriorityManual(command, 1800000002, true,
+        priorityManualEffect, &fixture) == sgk::CommandResult::kDuplicateCompleted);
+  auto second = command;
+  std::snprintf(second.nonce, sizeof(second.nonce), "another-manual");
+  CHECK(security.dispatchPriorityManual(second, 1800000002, true,
+        priorityManualEffect, &fixture) == sgk::CommandResult::kEffectRejected);
+  CHECK(fixture.effects == 1);  // No extension/reopening while relay active.
+  fixture.fsm.tick(3000);
+  CHECK(fixture.fsm.state() == GateState::COOLDOWN);
+  CHECK(!fixture.fsm.supersedeArmedForManual(3100));
+  fixture.fsm.tick(5000);
+  CHECK(fixture.fsm.otaSafeState() == OtaSafeState::SAFE);
+  CHECK(security.dispatchPriorityManual(second, 1800000003, true,
+        priorityManualEffect, &fixture) == sgk::CommandResult::kDuplicateCompleted);
+  CHECK(fixture.effects == 1);  // Busy request is never resurrected at IDLE.
+  CHECK(fixture.fsm.handlePreArm(6000));
+  CHECK(!fixture.fsm.supersedeArmedForManual(6100));  // Legacy remote ARM stays N-1.
+
+  // Power loss after a physical attempt but before completion persistence
+  // remains DuplicateUncertain; no callback/relay repeat on a replay.
+  MemoryCommandStorage uncertain_storage;
+  sgk::TargetCommandSecurity uncertain(&uncertain_storage, &verifier);
+  CHECK(uncertain.begin("target-a", "tenant-a", "door-a", "boot-a", 7));
+  PriorityManualFixture uncertain_fixture;
+  uncertain_fixture.fsm.begin(1000);
+  CHECK(uncertain_fixture.fsm.handleAuthPending(1100));
+  CHECK(uncertain_fixture.fsm.handleAuthSuccess(1200));
+  uncertain_fixture.fail_after_effect = &uncertain_storage;
+  CHECK(uncertain.dispatchPriorityManual(command, 1800000001, true,
+        priorityManualEffect, &uncertain_fixture) == sgk::CommandResult::kReplayStorageFailure);
+  uncertain_storage.fail_writes = false;
+  sgk::TargetCommandSecurity restored(&uncertain_storage, &verifier);
+  CHECK(restored.begin("target-a", "tenant-a", "door-a", "boot-a", 7));
+  CHECK(restored.dispatchPriorityManual(command, 1800000002, true,
+        priorityManualEffect, &uncertain_fixture) == sgk::CommandResult::kDuplicateUncertain);
+  CHECK(uncertain_fixture.effects == 1);
+}
+
 void testSignedCommandAccessTracker() {
   static constexpr const char* kCompactSession =
       "123e4567e89b42d3a456426614174000";
@@ -3666,6 +3763,7 @@ int main() {
   testCommittedActionSurvivesResultTransportFailure();
   testInvalidTypedCanonicalRecordQuarantine();
   testSignedCommandDurableReplayAndMutations();
+  testPriorityManualAuthorizationAndSensorWait();
   testSignedCommandAccessTracker();
   testRawCommandSchemaRejectsEveryDuplicateField();
   testOtaHealthRequiresContinuousPredicates();
