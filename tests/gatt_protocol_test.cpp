@@ -3278,6 +3278,8 @@ void testSignedCommandDurableReplayAndMutations() {
 
 struct PriorityManualFixture {
   sgk::TargetAccessFsm fsm;
+  sgk::SignedCommandAccessTracker tracker;
+  const char* lifecycle_session = "123e4567e89b42d3a456426614174000";
   int attempts = 0;
   int effects = 0;
   MemoryCommandStorage* fail_after_effect = nullptr;
@@ -3286,7 +3288,12 @@ struct PriorityManualFixture {
 bool priorityManualEffect(void* context) {
   auto& fixture = *static_cast<PriorityManualFixture*>(context);
   ++fixture.attempts;
-  if (!fixture.fsm.supersedeArmedForManual(2000)) return false;
+  if (!fixture.tracker.begin(sgk::SignedCommandAccessTracker::Mode::kManualRemote,
+                             fixture.lifecycle_session)) return false;
+  if (!fixture.fsm.supersedeArmedForManual(2000)) {
+    fixture.tracker.cancel();
+    return false;
+  }
   const bool completed = fixture.fsm.handleManualRemoteOpen(2000, 1000, 2000);
   if (completed) ++fixture.effects;
   if (fixture.fail_after_effect) fixture.fail_after_effect->fail_writes = true;
@@ -3329,6 +3336,14 @@ void testPriorityManualAuthorizationAndSensorWait() {
   CHECK(security.dispatchPriorityManual(configuration, 1800000002, true,
         priorityManualEffect, &fixture) == sgk::CommandResult::kDuplicateCompleted);
 
+  auto malformed_lifecycle = command;
+  std::snprintf(malformed_lifecycle.nonce, sizeof(malformed_lifecycle.nonce),
+                "invalid-lifecycle");
+  fixture.lifecycle_session = "invalid-lifecycle";
+  CHECK(security.dispatchPriorityManual(malformed_lifecycle, 1800000001, true,
+        priorityManualEffect, &fixture) == sgk::CommandResult::kEffectRejected);
+  CHECK(fixture.fsm.isArmed() && fixture.effects == 0);
+  fixture.lifecycle_session = "123e4567e89b42d3a456426614174000";
   CHECK(security.dispatchPriorityManual(command, 1800000001, true,
         priorityManualEffect, &fixture) == sgk::CommandResult::kAccepted);
   CHECK(fixture.effects == 1 && fixture.fsm.state() == GateState::RELAY_HOLD);

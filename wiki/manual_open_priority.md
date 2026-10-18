@@ -16,8 +16,9 @@ reserve and largest-block checks guard task creation.
 Only main applies the existing exact namespace, schema, signature, target/boot,
 clock, TTL and durable replay admission. A fresh manual_remote may supersede a
 local authenticated ARMED sensor wait. GATT's recursive control lock covers
-retiring that automatic lifecycle as existing SESSION_SUPERSEDED, sealing its
-sensor window, binding manual tracking and dispatching the effect. Freshness is
+validating/reserving the manual lifecycle identity, retiring the automatic
+lifecycle as existing SESSION_SUPERSEDED, sealing its sensor window and
+dispatching the effect. Freshness is
 rechecked inside this lock. Invalid/expired/duplicate/NVS-failed inputs cannot
 cancel the automatic wait or produce an extra effect.
 

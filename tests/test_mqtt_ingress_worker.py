@@ -44,6 +44,10 @@ class MqttIngressWorkerTest(unittest.TestCase):
         self.assertIn('client.subscribe(aclTopic.c_str(), 1)', update)
         self.assertIn("ingressWorker.ownsTransport()", source.split(
             "bool MqttManager::connectionAttemptInProgress()", 1)[1].split("}", 1)[0])
+        dispatch = source.split("bool MqttManager::dispatchCriticalManual", 1)[1].split(
+            "void MqttManager::dispatchPendingAccessCommand", 1)[0]
+        self.assertLess(dispatch.index("signedCommandAccessTracker.begin("),
+                        dispatch.index("!prepareManualRemoteOverride()"))
         gatt = (ROOT / "src/GattServer.cpp").read_text()
         control = gatt.split("bool GattServer::runExclusiveControl", 1)[1].split(
             "void GattServer::notifySessionTerminated", 1)[0]

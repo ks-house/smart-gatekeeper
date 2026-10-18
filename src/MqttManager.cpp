@@ -1403,11 +1403,16 @@ bool MqttManager::dispatchCriticalManual(
         const auto& command = *static_cast<const sgk::SignedCommandEnvelope*>(context);
         const time_t now = std::time(nullptr);
         if (now < static_cast<time_t>(command.issued_at) ||
-            now >= static_cast<time_t>(command.expires_at) ||
-            !prepareManualRemoteOverride()) return false;
+            now >= static_cast<time_t>(command.expires_at)) return false;
+        // Reserve/validate the manual session identity before retiring ARM.
+        // A signed but malformed lifecycle ID must not cancel automatic access.
         if (!signedCommandAccessTracker.begin(
                 sgk::SignedCommandAccessTracker::Mode::kManualRemote,
                 command.session_id)) return false;
+        if (!prepareManualRemoteOverride()) {
+            signedCommandAccessTracker.cancel();
+            return false;
+        }
         const bool completed = triggerManualDoorOpen();
         if (!completed) signedCommandAccessTracker.cancel();
         return completed;
