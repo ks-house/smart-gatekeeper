@@ -8109,3 +8109,11 @@
 - Configure only personal-auto-ota federation metadata and private NAS4222 variables. Actual manual39034675586 joins with the new identity and passes read-only Target/primary APK/fallback directory checks; download and verify the exact sanitized success receipt.
 - Read back OTA_PUBLISH_TRANSPORT=tailscale for future releases. This config change publishes no artifact and triggers no device command/install.460 remains open for actual atomic publication/HTTPS proof and later external SSH refusal; current firewall stays disabled and461 backup remains deferred.
 - Independent health checkb7b2ac46 confirms unchanged Backend64b5c2f readiness, HA HTTP200/WSS101/zero monitor failures, authenticated reconnect, anonymous-false broker and preserved authenticated OTA guard. No service restart or deferred backup action.
+
+## [2026-10-18] test | Diagnose sensor-wait and delayed manual access
+
+- Use existing read-only diagnostics and fixed-window paging, not owner exports or device commands. Same-phone credential correlation confirms both manual broker-accepted requests alongside the automatic authenticated session.
+- Signed60,028ms window reports468 samples/118 valid/350 timeouts/8 near; matched unsigned qualification has max near streak2 and zero candidates/triggers. Do not label hardware failure or physical arrival from this.
+- Installed525 exacta63ca41 defers MQTT receive while ARMED; signed manual completions follow timeout by1.381s/12.655s and a signed sample reports relay ON/pin0. Physical movement remains unobserved; receipt time is not occurrence time.
+- Register470 for safe manual handling/delivery evidence; retain private originals. Current Backend12 checks and fresh same-boot Target idle/audit queue health pass. No behavior, threshold, service, NAS, OTA, door command or deferred461 backup change.
+- Fresh post-review sensor advisory remains NO_ECHO/clearance FAULT, last valid about51s earlier; this is not a hardware-fault conclusion or proof that automatic opening is healthy.
