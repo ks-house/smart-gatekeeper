@@ -30,6 +30,8 @@ private:
                                    uint32_t wifiLinkGeneration);
     static void connectWorkerEntry(void* argument);
     static void pollTelemetryWorker();
+    static void pollIngressWorker();
+    static bool dispatchCriticalManual(const sgk::SignedCommandEnvelope& envelope);
     static void invalidatePublishTransport(size_t payloadBytes,
                                            const char* diagnosticAction);
     static bool publishPacket(const char* topic, const char* payload,
@@ -39,12 +41,14 @@ private:
 public:
     static void init();
     static void update();
-    // These coordination hooks never inspect or mutate the transport objects.
-    // main can request cooperative cancellation as soon as local access owns
-    // the control path. During sensor waiting an immutable signed-status write
-    // may run under exclusive worker ownership; commands remain main-loop-only.
-    // OTA excludes both the connect and status-write worker ownership windows.
+    // Main can request cancellation as soon as local access owns the loop.
+    // Sensor/relay progress never waits for TLS. Exclusive workers may write
+    // immutable status or read/copy a command; only main authorizes effects.
+    // OTA excludes connect, status-write and receive/reply ownership windows.
     static void deferForAccessCritical();
+    // Background read/copy only; fresh manual authorization and the serialized
+    // automatic-to-manual handoff run on main after exclusive socket adoption.
+    static void serviceAccessCriticalIngress();
     static bool connectionAttemptInProgress();
     // Main-task-only safe OTA lease. Releases the established TLS allocation,
     // not merely concurrent handshakes; all exits must resume normal reconnect.

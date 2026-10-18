@@ -8117,3 +8117,15 @@
 - Installed525 exacta63ca41 defers MQTT receive while ARMED; signed manual completions follow timeout by1.381s/12.655s and a signed sample reports relay ON/pin0. Physical movement remains unobserved; receipt time is not occurrence time.
 - Register470 for safe manual handling/delivery evidence; retain private originals. Current Backend12 checks and fresh same-boot Target idle/audit queue health pass. No behavior, threshold, service, NAS, OTA, door command or deferred461 backup change.
 - Fresh post-review sensor advisory remains NO_ECHO/clearance FAULT, last valid about51s earlier; this is not a hardware-fault conclusion or proof that automatic opening is healthy.
+
+## [2026-10-18] fix | Implement authorized manual priority over local sensor wait
+
+- Add one bounded receive/reply worker on existing TLS with exclusive ownership. Worker callbacks copy only; main checks exact target/schema/signature/boot/TTL and persists replay state before any effect.
+- Under serialized GATT control, a fresh manual supersedes a local automatic ARMED wait using existing SESSION_SUPERSEDED, seals its sensor window and starts manual tracking. Invalid/expired/duplicate/NVS-failed inputs cannot cancel ARM; active relay/cooldown and legacy remote lifecycles remain fail-closed.
+- Keep critical origin across the idle transition and retire busy requests rather than delayed reopening. Use a flag for retained ACL re-subscription at idle, preserving signature/watermark checks; no extra TLS socket/8KB queue. Include all socket owners in OTA exclusion and use wrap-safe polling.
+-490 root tests PASS/14 environment skips; latest focused34 PASS/one broker skip. Default C6 build and local enabled-GATT compile/preprocessor1 pass; exact reviewed production inputs and OTA gate are preserved.
+- A bundled lab-profile/input-pin follow-up was blocked by automatic approval review without a detailed reason. Remove only that unpublished build-profile change and leave the gate unchanged; document the independent lab finding. No claim of its upstream correction.
+- No threshold/pin/relay timing change, live door command, forced restart/OTA or deferred461 backup action. Hosted publication, installed boot health and physical use remain separate gates.
+- Review follow-up reserves/validates manual lifecycle identity before retiring ARM; a signed malformed session cannot cancel the automatic wait. Add production-component and routing regressions for this ordering.
+- Allocation review adds the existing idle-writer fallback for an ACK whose reply-only worker cannot start, preventing receive starvation while retaining critical-phase worker-only I/O.
+- Run the new receiver below loopTask priority so its TLS/packet work does not preempt pulseIn sampling; assert the actual task priority in the native transport fixture.

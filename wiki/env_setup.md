@@ -947,3 +947,18 @@ a different running Compose project holding either the selected MariaDB volume
 or API host port. An independently restored off-NAS backup and separate trusted
 workflow policy rotation are release Gates. The current candidate has not
 published GHCR images or changed the NAS, GitHub Environment or tailnet.
+
+
+## 2026-10-18 lab feature-flag verification finding
+
+The existing esp32c6_hwless_rc profile's -U override is grouped after -D by
+PlatformIO, leaving the final effective feature at0. A credential-free local
+experiment removed the inherited off define through build_unflags and confirmed
+an actual feature1 compile. That experiment is not a production release.
+
+The attempted combined lab-profile/OTA input-pin update was rejected by automatic
+approval review without a detailed reason. The unpublished lab change was
+removed; the original platformio.ini and OTA validator pin remain unchanged.
+Do not claim the repository's current lab label proves enabled transport.
+The production personal profile has its separate, already reviewed unflags
+configuration; its hosted build and actual install evidence remain required.

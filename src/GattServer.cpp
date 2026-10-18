@@ -1258,6 +1258,14 @@ void GattServer::notifySessionCompleted(uint64_t now_ms) {
 #endif
 }
 
+bool GattServer::runExclusiveControl(bool (*operation)(void*), void* context) {
+  if (operation == nullptr) return false;
+#if ENABLE_HARDWARELESS_RC
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
+#endif
+  return operation(context);
+}
+
 void GattServer::notifySessionTerminated(uint64_t now_ms,
                                          sgk::EventReason reason) {
 #if ENABLE_HARDWARELESS_RC

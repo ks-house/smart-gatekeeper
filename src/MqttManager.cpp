@@ -5,6 +5,7 @@
 // =============================================================
 #include "MqttManager.h"
 #include "MqttTelemetryWorker.h"
+#include "MqttIngressWorker.h"
 #include "MqttDiagnosticScratch.h"
 #include "MqttConnectionPolicy.h"
 #include "MqttConnectionJson.h"
@@ -55,6 +56,7 @@
 #define LOGF(fmt, ...) do { printf(fmt "\n", ##__VA_ARGS__); fflush(stdout); } while(0)
 
 // main.cpp에서 정의된 외부 함수 참조
+extern bool prepareManualRemoteOverride();
 extern bool triggerManualDoorOpen(); // 원격/MQTT 수동 개방 명령
 extern bool triggerArm();
 extern void setTxPower(int powerDbm);
@@ -276,6 +278,14 @@ static_assert(sizeof(pendingTelemetry) + 160 + 5 < 8192,
 bool pendingTelemetryValid = false;
 uint32_t pendingTelemetryGeneration = 0;
 sgk::MqttTelemetryWorker telemetryWorker;
+sgk::MqttIngressWorker ingressWorker;
+bool ingressPacketReady = false;
+bool criticalIngressDispatch = false;
+uint32_t ingressLinkGeneration = 0;
+uint32_t ingressLastAttemptMs = 0;
+uint32_t ingressRetryDelayMs = 0;
+char pendingCriticalAck[sgk::MqttIngressWorker::kReplyBytes]{};
+bool deferredAclRefresh = false;
 uint32_t telemetryWorkerLinkGeneration = 0;
 uint32_t telemetryWorkerRetryAtMs = 0;
 uint32_t telemetryWorkerFailures = 0;
@@ -1004,7 +1014,32 @@ bool MqttManager::publishPacket(const char* topic, const char* payload,
     return false;
 }
 
+void MqttManager::pollIngressWorker() {
+    sgk::MqttIngressWorker::Result result{};
+    if (!ingressWorker.takeResult(&result)) return;
+    if (result.reply_attempted) pendingCriticalAck[0] = 0;
+    const bool current = WifiManager::isConnected() &&
+        ingressLinkGeneration == WifiManager::linkGeneration();
+    if (result.reply_attempted && !result.reply_published) {
+        ingressPacketReady = false;
+        invalidatePublishTransport(0, "mqtt_priority_ack_write_failed");
+        return;
+    }
+    if (!result.watchdog_healthy || !result.serviced ||
+        !result.connected || !current) {
+        ingressPacketReady = false;
+        connected = false;
+        wifiClient.stop();
+        ingressLastAttemptMs = millis();
+        ingressRetryDelayMs = 1000;
+        return;
+    }
+    mqttConnection.loop(millis());
+    ingressPacketReady = result.received;
+}
+
 void MqttManager::pollTelemetryWorker() {
+    pollIngressWorker();
     sgk::MqttTelemetryWorker::Result result{};
     if (!telemetryWorker.takeResult(&result)) return;
     telemetryWorkerMaxDurationMs = std::max(
@@ -1035,6 +1070,7 @@ void MqttManager::deferForAccessCritical() {
     pollTelemetryWorker();
     if (!mqttSecurityReady || !connected || !pendingTelemetryValid ||
         connectWorkerIsRunning() || telemetryWorker.ownsTransport() ||
+        ingressWorker.ownsTransport() || ingressPacketReady ||
         signedRestartPending || GattServer::isConnected() ||
         GattServer::hasPendingIngress() || GattServer::hasActiveOutput() ||
         !WifiManager::isConnected() ||
@@ -1050,8 +1086,44 @@ void MqttManager::deferForAccessCritical() {
     }
 }
 
+void MqttManager::serviceAccessCriticalIngress() {
+    if (otaTransportSuspended) return;
+    pollTelemetryWorker();
+    if (connectWorkerIsRunning() || telemetryWorker.ownsTransport() ||
+        ingressWorker.ownsTransport() || !mqttSecurityReady) return;
+    if (ingressPacketReady) {
+        ingressPacketReady = false;
+        auto& packet = ingressWorker.packet();
+        if (std::strcmp(packet.topic, aclTopic.c_str()) == 0) {
+            // Do not allocate/copy an 8KB ACL while proof/relay headroom is
+            // needed. Re-subscribe to the retained latest ACL when idle; its
+            // signature/watermark still validates before any application ACK.
+            deferredAclRefresh = true;
+        } else if (!packet.truncated) {
+            criticalIngressDispatch = true;
+            callback(packet.topic, packet.payload, packet.length);
+            criticalIngressDispatch = false;
+        }
+        return;
+    }
+    if (!connected || !WifiManager::isConnected() || signedRestartPending ||
+        GattServer::hasPendingIngress() || GattServer::hasActiveOutput() ||
+        !sgk::MqttIngressWorker::pollDue(millis(), ingressLastAttemptMs,
+                                        ingressRetryDelayMs)) return;
+    ingressLinkGeneration = WifiManager::linkGeneration();
+    ingressLastAttemptMs = millis();
+    if (ingressWorker.start(client,
+            pendingCriticalAck[0] ? commandAckTopic.c_str() : nullptr,
+            pendingCriticalAck[0] ? pendingCriticalAck : nullptr)) {
+        ingressRetryDelayMs = 250;
+    } else {
+        ingressRetryDelayMs = 1000;
+    }
+}
+
 bool MqttManager::connectionAttemptInProgress() {
-    return connectWorkerIsRunning() || telemetryWorker.ownsTransport();
+    return connectWorkerIsRunning() || telemetryWorker.ownsTransport() ||
+           ingressWorker.ownsTransport();
 }
 
 bool MqttManager::suspendForOta() {
@@ -1119,14 +1191,20 @@ bool MqttManager::publishCommandAck(
     document["result"] = static_cast<uint8_t>(result);
     char buffer[384]{};
     const size_t length = serializeJson(document, buffer, sizeof(buffer));
-    return !document.overflowed() && length > 0 && length < sizeof(buffer) &&
-           publishPacket(commandAckTopic.c_str(), buffer, false, length,
+    if (document.overflowed() || length == 0 || length >= sizeof(buffer)) return false;
+    if (criticalIngressDispatch) {
+        // Main must not do TLS I/O during sensor/relay work. One immutable ACK
+        // is sent by the same exclusive ingress worker before its next read.
+        std::memcpy(pendingCriticalAck, buffer, length + 1);
+        return true;
+    }
+    return publishPacket(commandAckTopic.c_str(), buffer, false, length,
                          "mqtt_command_ack_write_failed");
 }
 
 bool MqttManager::startConnectWorker(const IPAddress& brokerAddress,
                                      uint32_t wifiLinkGeneration) {
-    if (telemetryWorker.ownsTransport()) return false;
+    if (telemetryWorker.ownsTransport() || ingressWorker.ownsTransport()) return false;
     auto* request = new (std::nothrow) MqttConnectRequest{};
     if (request == nullptr) return false;
 
@@ -1314,6 +1392,33 @@ void MqttManager::connectWorkerEntry(void* argument) {
     vTaskDelete(nullptr);
 }
 
+bool MqttManager::dispatchCriticalManual(
+    const sgk::SignedCommandEnvelope& envelope) {
+    if (signedCommandAccessTracker.active() ||
+        envelope.action != sgk::CommandAction::kManualRemote ||
+        std::time(nullptr) >= static_cast<time_t>(envelope.expires_at)) return false;
+    // No network I/O inside this operation. A raw peer cannot win the gap
+    // between retiring the authenticated automatic session and manual relay ON.
+    return GattServer::runExclusiveControl([](void* context) {
+        const auto& command = *static_cast<const sgk::SignedCommandEnvelope*>(context);
+        const time_t now = std::time(nullptr);
+        if (now < static_cast<time_t>(command.issued_at) ||
+            now >= static_cast<time_t>(command.expires_at)) return false;
+        // Reserve/validate the manual session identity before retiring ARM.
+        // A signed but malformed lifecycle ID must not cancel automatic access.
+        if (!signedCommandAccessTracker.begin(
+                sgk::SignedCommandAccessTracker::Mode::kManualRemote,
+                command.session_id)) return false;
+        if (!prepareManualRemoteOverride()) {
+            signedCommandAccessTracker.cancel();
+            return false;
+        }
+        const bool completed = triggerManualDoorOpen();
+        if (!completed) signedCommandAccessTracker.cancel();
+        return completed;
+    }, const_cast<sgk::SignedCommandEnvelope*>(&envelope));
+}
+
 void MqttManager::dispatchPendingAccessCommand() {
     if (!pendingSignedAccessCommand.ready) return;
     const PendingSignedAccessCommand pending = pendingSignedAccessCommand;
@@ -1377,6 +1482,12 @@ void MqttManager::init() {
     accessTerminalSummary = AccessTerminalSummary{};
     signedCommandAccessTracker.cancel();
     pendingSignedAccessCommand = PendingSignedAccessCommand{};
+    ingressPacketReady = false;
+    criticalIngressDispatch = false;
+    pendingCriticalAck[0] = 0;
+    deferredAclRefresh = false;
+    ingressLastAttemptMs = 0;
+    ingressRetryDelayMs = 0;
     wifiAvailableLastUpdate = false;
     wifiLinkGenerationInitialized = false;
     wifiLinkGenerationLastUpdate = 0;
@@ -1473,6 +1584,7 @@ void MqttManager::init() {
 }
 
 void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
+    if (ingressWorker.capture(topic, payload, length)) return;
     // ─── smart-gatekeeper/target/acl/push — Signed ACL push ───────────────
     if (mqttSecurityReady && strcmp(topic, aclTopic.c_str()) == 0) {
         LOGF("[MQTT-ACL] Signed ACL push 수신 (길이: %u)", length);
@@ -1583,6 +1695,22 @@ void MqttManager::callback(char* topic, byte* payload, unsigned int length) {
     const uint64_t verificationTime = systemClockTrusted
         ? static_cast<uint64_t>(systemTime)
         : 0;
+    if (criticalIngressDispatch) {
+        const sgk::CommandResult result = commandSecurity.dispatchPriorityManual(
+            envelope, verificationTime, systemClockTrusted,
+            [](void* context) {
+                const auto& command =
+                    *static_cast<const sgk::SignedCommandEnvelope*>(context);
+                const bool completed = dispatchCriticalManual(command);
+                if (completed) {
+                    accessActionStartedDuringLoop = true;
+                    pendingTelemetryValid = false;
+                }
+                return completed;
+            }, &envelope);
+        publishCommandAck(envelope, result);
+        return;
+    }
     const sgk::CommandResult authorization = commandSecurity.authorize(
         envelope, verificationTime, systemClockTrusted);
     if (authorization != sgk::CommandResult::kAccepted) {
@@ -1693,6 +1821,7 @@ void MqttManager::update() {
     if (otaTransportSuspended) return;
     pollTelemetryWorker();
     if (telemetryWorker.ownsTransport()) return;
+    if (ingressWorker.ownsTransport()) return;
     if (!mqttSecurityReady) return;
     const uint32_t wifiLinkGeneration = WifiManager::linkGeneration();
     bool wifiLinkChanged = false;
@@ -1865,6 +1994,43 @@ void MqttManager::update() {
     mqttReconnect.stable(millis());
     mqttConnection.loop(millis());
     accessActionStartedDuringLoop = false;
+    if (ingressPacketReady) {
+        ingressPacketReady = false;
+        auto& packet = ingressWorker.packet();
+        if (std::strcmp(packet.topic, aclTopic.c_str()) == 0) {
+            deferredAclRefresh = true;
+        } else if (!packet.truncated) {
+            // The packet was received in a critical window. If that window
+            // ended before adoption, reject rather than resurrecting an old
+            // busy request at IDLE and unexpectedly reopening.
+            criticalIngressDispatch = true;
+            callback(packet.topic, packet.payload, packet.length);
+            criticalIngressDispatch = false;
+        }
+        return;
+    }
+    if (deferredAclRefresh) {
+        deferredAclRefresh = false;
+        if (!client.subscribe(aclTopic.c_str(), 1)) {
+            invalidatePublishTransport(0, "mqtt_acl_refresh_subscribe_failed");
+            deferredAclRefresh = true;
+        }
+        return;
+    }
+    if (pendingCriticalAck[0] != 0) {
+        ingressLinkGeneration = WifiManager::linkGeneration();
+        if (!ingressWorker.start(client, commandAckTopic.c_str(),
+                                  pendingCriticalAck, false)) {
+            // update() is admitted only at idle. If a worker cannot allocate,
+            // flush via the existing idle writer rather than starving all
+            // subsequent receives behind an unsendable reply.
+            const size_t length = std::strlen(pendingCriticalAck);
+            publishPacket(commandAckTopic.c_str(), pendingCriticalAck, false,
+                          length, "mqtt_priority_ack_write_failed");
+            pendingCriticalAck[0] = 0;
+        }
+        return;
+    }
     const bool serviced = client.loop();
     connected = client.connected() && wifiClient.connected();
     if ((!serviced || !connected) && mqttConnection.live()) {

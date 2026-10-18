@@ -227,6 +227,22 @@ CommandResult TargetCommandSecurity::authorize(
   return CommandResult::kAccepted;
 }
 
+CommandResult TargetCommandSecurity::dispatchPriorityManual(
+    const SignedCommandEnvelope& envelope, uint64_t trusted_unix_seconds,
+    bool clock_trusted, bool (*effect)(void*), void* context) {
+  const CommandResult authorization =
+      authorize(envelope, trusted_unix_seconds, clock_trusted);
+  if (authorization != CommandResult::kAccepted) return authorization;
+  if (trusted_unix_seconds >= envelope.expires_at) {
+    return markCompleted(envelope) ? CommandResult::kExpired
+                                   : CommandResult::kReplayStorageFailure;
+  }
+  const bool completed = envelope.action == CommandAction::kManualRemote &&
+                         effect != nullptr && effect(context);
+  if (!markCompleted(envelope)) return CommandResult::kReplayStorageFailure;
+  return completed ? CommandResult::kAccepted : CommandResult::kEffectRejected;
+}
+
 bool TargetCommandSecurity::markCompleted(
     const SignedCommandEnvelope& envelope) {
   if (!ready_) return false;
