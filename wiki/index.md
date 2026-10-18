@@ -45,7 +45,7 @@
 | [architecture.md](architecture.md) | Legacy HTTPS/MQTT, personal-production Backend ACL enrollment/ACK → local GATT action-1/action-2, typed Target access-event 수집과 비식별 HA 완료 표식을 구분한 출입·진단 구조 |
 | [commercial_release_program.md](commercial_release_program.md) | 상용 출시 목표, 작업 DAG, 보안·핵심·모바일·매뉴얼·실기기·production 완료 Gate |
 | [manual_open_priority.md](manual_open_priority.md) | Signed manual priority over local sensor wait, exclusive receive worker, replay/TTL/OTA safety and validation boundaries |
-| [access_incident_2026_10_18.md](access_incident_2026_10_18.md) | Read-only automatic sensor qualification and ARMED-delayed manual MQTT incident; issue470, physical outcome unconfirmed |
+| [access_incident_2026_10_18.md](access_incident_2026_10_18.md) | Automatic sensor qualification and delayed manual MQTT incident; installed552 manual fix and owner-confirmed manual use, automatic/ARMED field gates remain |
 | [access_evidence_recovery.md](access_evidence_recovery.md) | #426 FIFO/DB-commit receipt replay and #430 collector/expired-ACL recovery; Backend5053a3a deployed, APK46101 published, owner UI ready; Admin device/field acceptance pending |
 | [current_code_audit.md](current_code_audit.md) | 최신 코드 계약, 기존 문서 불일치, P0/P1/P2 위험과 다음 우선순위 |
 | [target_connectivity_root_cause.md](target_connectivity_root_cause.md) | MCU reset 실측, retained coredump의 lwIP UDP panic, v2.1 원격 진단과 relay fail-safe |

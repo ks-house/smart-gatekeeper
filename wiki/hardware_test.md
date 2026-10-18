@@ -1446,4 +1446,5 @@ No Target command, reboot, OTA trigger, relay action or physical success is infe
 | Latest focused suite |34 PASS/one broker skip | Actual production components with fake transport/storage |
 | Default C6 build and enabled-GATT local lab experiment | PASS | Public fixture only; lab input-pin follow-up removed after approval-review rejection |
 | OTA contract/trusted policy | PASS/42 tests PASS | Reviewed release input and validator pins unchanged |
-| Actual installed version and natural manual/physical use | Pending | No unattended actuation; sensor NO_ECHO/FAULT root cause remains separate |
+| Actual install and owner manual use | PASS |2.1.552+main.g3edc4b4, new boot/VALID, three verified healthy samples; owner confirms door opening and signed manual completion corroborates |
+| Busy-ARM field preemption / automatic sensor qualification | Pending | No automatic ARM/superseded event in the post-install window; no unattended actuation or sensor-fault conclusion |

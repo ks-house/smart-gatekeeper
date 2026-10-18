@@ -962,3 +962,5 @@ removed; the original platformio.ini and OTA validator pin remain unchanged.
 Do not claim the repository's current lab label proves enabled transport.
 The production personal profile has its separate, already reviewed unflags
 configuration; its hosted build and actual install evidence remain required.
+
+Track the unmodified lab-profile finding separately in [issue473](https://github.com/ks-house/smart-gatekeeper/issues/473). Exact-main personal release39111255559 successfully built the existing reviewed production profile; installed552 is VALID.

@@ -78,3 +78,15 @@ The owner subsequently requested a fix. See
 worker and fresh signed-manual priority over a local automatic sensor wait.
 The original evidence remains historical. Source/tests do not by themselves
 prove installation, a healthy sensor or physical door motion.
+
+
+## Post-fix manual acceptance
+
+[PR472](https://github.com/ks-house/smart-gatekeeper/pull/472) is merged and
+firmware2.1.552+main.g3edc4b4 is installed with a new boot, VALID image and
+verified healthy readiness samples. The owner confirms manual door opening is
+normal; a signed manual completion corroborates that use. See
+[manual_open_priority.md](manual_open_priority.md) for publication/install proof.
+This does not retroactively prove the original incident's physical outcome.
+The post-install window contains no automatic ARM/superseded event, so field
+preemption and automatic sensor qualification remain separate unclosed gates.
