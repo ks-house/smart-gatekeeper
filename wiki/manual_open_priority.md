@@ -2,7 +2,8 @@
 
 Tracks [issue470](https://github.com/ks-house/smart-gatekeeper/issues/470).
 Diagnosis: [access_incident_2026_10_18.md](access_incident_2026_10_18.md).
-Stage: implementation and isolated validation; installation/field use are separate.
+Stage: merged, privately published, installed/VALID and owner-confirmed manual door use.
+The specific ARMED preemption case remains field-unobserved.
 
 ## Authority and transport
 
@@ -68,3 +69,32 @@ failure by this fix.
   artifacts are not release/installation evidence. Hosted release compilation,
   exact installed version/boot health and actual manual/physical use remain
   independent gates. Do not use a live opening as an unattended regression.
+
+
+## 2026-10-18 installed acceptance
+
+[PR472](https://github.com/ks-house/smart-gatekeeper/pull/472) merged as
+3edc4b42a9f288e8c26fed7c065431dd1f3c6018 after required checks passed.
+[Release39111255559](https://github.com/ks-house/smart-gatekeeper/actions/runs/39111255559)
+built exact-main with protected personal runtime inputs, joined the dedicated
+private publisher network, atomically promoted signed/encrypted artifacts and
+verified the exact pointer/content over HTTPS. Previous valid content was
+retained. Public local build fixtures were not published.
+
+One owner-authorized signed ota_check requested the repair update; its broker
+and application acknowledgments were kept separate from install evidence.
+Firmware2.1.552+main.g3edc4b4 subsequently reported a new boot and VALID image.
+Three verified health samples showed IDLE/relay OFF, BLE ready, no OTA error,
+and an empty/nonstalled access-evidence queue. Backend readiness passed12 checks.
+
+The owner then confirmed actual manual door opening worked. One verified
+ACCESS_SIGNED_MANUAL_COMPLETED / ACCESS_GRANTED / SUCCEEDED event corroborates
+that use. This post-install event window contains no automatic ARM or
+SESSION_SUPERSEDED: owner confirmation proves manual use, not a field exercise
+of busy-ARM preemption. That case has isolated production-component coverage
+and remains part of the broader physical acceptance gates.
+
+Automatic sensor qualification/NO_ECHO/FAULT root cause remains unresolved;
+no sensor threshold, GPIO or relay timing was changed. No unattended door
+command or forced reboot was sent. Backup461 remains deferred, and the NAS
+firewall stays at its original disabled baseline.

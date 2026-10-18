@@ -8129,3 +8129,11 @@
 - Review follow-up reserves/validates manual lifecycle identity before retiring ARM; a signed malformed session cannot cancel the automatic wait. Add production-component and routing regressions for this ordering.
 - Allocation review adds the existing idle-writer fallback for an ACK whose reply-only worker cannot start, preventing receive starvation while retaining critical-phase worker-only I/O.
 - Run the new receiver below loopTask priority so its TLS/packet work does not preempt pulseIn sampling; assert the actual task priority in the native transport fixture.
+
+
+## [2026-10-18] test | Accept installed manual fix and owner-confirmed door use
+
+- PR472 merges as3edc4b42 after required checks; exact-main release39111255559 builds protected personal inputs, joins private SFTP, atomically publishes signed/encrypted Target552 and verifies HTTPS content. Previous valid artifact retained; no local fixture publication.
+- One authorized signed ota_check is acknowledged. Separate new-boot firmware2.1.552+main.g3edc4b4 health establishes install/VALID; three verified samples show IDLE/relay OFF, BLE ready, no OTA error or stalled/gapped evidence queue; Backend12 readiness checks pass.
+- Owner confirms actual manual door opening is normal; verified signed manual completion succeeds. No automatic ARM/superseded event appears in this post-install window, so do not claim field preemption, automatic sensor recovery or broader physical gates passed.
+- Target private publication proof advances460; mobile publication/external SSH refusal remain open. Lab flag-order follow-up473 remains unimplemented after automatic approval rejection. No unattended door command, sensor threshold/GPIO/timing change, NAS firewall activation or deferred461 backup work.

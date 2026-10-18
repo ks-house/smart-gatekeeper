@@ -146,3 +146,17 @@ and HTTPS artifact/readback acceptance are still required before reactivating
 the external SSH firewall restriction. Keep460 open; current NAS firewall stays
 disabled and existing download/rollback paths remain available. Backup461 is
 still owner-deferred; no new dump/copy/restore/schedule was run.
+
+
+## 2026-10-18 actual private Target publication
+
+[Release39111255559](https://github.com/ks-house/smart-gatekeeper/actions/runs/39111255559)
+publishes exact-main3edc4b42 firmware2.1.552+main.g3edc4b4 through the dedicated
+private publisher network. The sanitized receipt confirms atomic metadata
+swap, retained previous valid artifact and immutable HTTPS readback; encrypted
+artifact size is1942500 bytes. Installation is separately verified by new-boot
+VALID health. This is personal-lane proof, not commercial production approval.
+
+This closes the Target publication evidence gap only. Mobile private atomic
+publication and subsequent external SSH refusal remain pending in460. Keep
+the firewall disabled baseline and owner-deferred461 backup unchanged.
