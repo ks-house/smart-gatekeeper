@@ -30,7 +30,8 @@ The normal idle signed-command path and N/N-1 terminal vocabulary stay intact.
 
 Critical application ACKs are immutable worker writes; an uncertain write stops
 further reads on that stream. Idle ACK flushing uses reply-only mode, leaving
-new idle requests to normal receive. Transport ACK, Target software effect and
+new idle requests to normal receive. If idle task allocation fails, use the
+existing serialized idle writer so an unsendable ACK cannot starve receive. Transport ACK, Target software effect and
 physical door movement remain distinct.
 
 ## Bounds and recovery

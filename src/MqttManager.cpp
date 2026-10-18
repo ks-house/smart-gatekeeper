@@ -2019,7 +2019,16 @@ void MqttManager::update() {
     }
     if (pendingCriticalAck[0] != 0) {
         ingressLinkGeneration = WifiManager::linkGeneration();
-        ingressWorker.start(client, commandAckTopic.c_str(), pendingCriticalAck, false);
+        if (!ingressWorker.start(client, commandAckTopic.c_str(),
+                                  pendingCriticalAck, false)) {
+            // update() is admitted only at idle. If a worker cannot allocate,
+            // flush via the existing idle writer rather than starving all
+            // subsequent receives behind an unsendable reply.
+            const size_t length = std::strlen(pendingCriticalAck);
+            publishPacket(commandAckTopic.c_str(), pendingCriticalAck, false,
+                          length, "mqtt_priority_ack_write_failed");
+            pendingCriticalAck[0] = 0;
+        }
         return;
     }
     const bool serviced = client.loop();

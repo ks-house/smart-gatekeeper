@@ -42,6 +42,11 @@ class MqttIngressWorkerTest(unittest.TestCase):
         self.assertLess(main.index("MqttManager::deferForAccessCritical();"),
                         main.index("MqttManager::serviceAccessCriticalIngress();"))
         self.assertIn('client.subscribe(aclTopic.c_str(), 1)', update)
+        reply = update.split("if (pendingCriticalAck[0] != 0)", 1)[1].split(
+            "const bool serviced = client.loop()", 1)[0]
+        self.assertIn("if (!ingressWorker.start(", reply)
+        self.assertIn("publishPacket(commandAckTopic.c_str()", reply)
+        self.assertIn("pendingCriticalAck[0] = 0", reply)
         self.assertIn("ingressWorker.ownsTransport()", source.split(
             "bool MqttManager::connectionAttemptInProgress()", 1)[1].split("}", 1)[0])
         dispatch = source.split("bool MqttManager::dispatchCriticalManual", 1)[1].split(

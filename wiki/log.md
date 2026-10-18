@@ -8127,3 +8127,4 @@
 - A bundled lab-profile/input-pin follow-up was blocked by automatic approval review without a detailed reason. Remove only that unpublished build-profile change and leave the gate unchanged; document the independent lab finding. No claim of its upstream correction.
 - No threshold/pin/relay timing change, live door command, forced restart/OTA or deferred461 backup action. Hosted publication, installed boot health and physical use remain separate gates.
 - Review follow-up reserves/validates manual lifecycle identity before retiring ARM; a signed malformed session cannot cancel the automatic wait. Add production-component and routing regressions for this ordering.
+- Allocation review adds the existing idle-writer fallback for an ACK whose reply-only worker cannot start, preventing receive starvation while retaining critical-phase worker-only I/O.
