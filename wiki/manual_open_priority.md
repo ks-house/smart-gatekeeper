@@ -10,7 +10,8 @@ MqttIngressWorker leases the existing established PubSubClient/TLS socket,
 excluding connect, status-write, normal receive and OTA owners. One receive pass
 copies a bounded frame. Its callback cannot authorize, write replay state,
 apply ACL/config, reboot, start OTA or operate the relay. Main keeps progressing
-the sensor/FSM/relay timer during a blocked read or reply write. Watchdog, heap
+the sensor/FSM/relay timer during a blocked read or reply write. The receiver
+runs below loopTask priority so it does not preempt pulseIn sampling. Watchdog, heap
 reserve and largest-block checks guard task creation.
 
 Only main applies the existing exact namespace, schema, signature, target/boot,

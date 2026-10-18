@@ -88,8 +88,9 @@ bool MqttIngressWorker::start(PubSubClient& client, const char* reply_topic,
   portENTER_CRITICAL(&mux_);
   running_ = true;
   portEXIT_CRITICAL(&mux_);
+  // Below Arduino loopTask: new receive work must not preempt pulseIn sampling.
   if (xTaskCreate(run, "mqtt-ingress", kStackBytes, request,
-                  tskIDLE_PRIORITY + 1, nullptr) == pdPASS) return true;
+                  tskIDLE_PRIORITY, nullptr) == pdPASS) return true;
   portENTER_CRITICAL(&mux_);
   running_ = false;
   portEXIT_CRITICAL(&mux_);

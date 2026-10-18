@@ -34,7 +34,8 @@ int esp_task_wdt_add(void*) { return watchdog_ok ? 0 : -1; }
 int esp_task_wdt_reset() { return 0; }
 int esp_task_wdt_delete(void*) { return 0; }
 int xTaskCreate(void (*entry)(void*), const char*, uint32_t, void* argument,
-                unsigned, void*) {
+                unsigned priority, void*) {
+  assert(priority == tskIDLE_PRIORITY);  // Lower than the sensor/control loop.
   if (!task_ok) return 0;
   task = std::thread(entry, argument);
   return 1;
