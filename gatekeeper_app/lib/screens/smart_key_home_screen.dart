@@ -50,6 +50,8 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
   int _tab = 0;
   bool _busy = false;
   MobileIdentityStatus _identityStatus = MobileIdentityStatus.unavailable;
+  bool _identityStatusLoaded = false;
+  int _identityRefreshGeneration = 0;
   NativeGattWorkerHealth? _health;
   UpdateExperience? _updateExperience;
   List<MobileActivityItem> _activity = const [];
@@ -324,13 +326,26 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
   }
 
   Future<void> _refreshIdentity() async {
+    final generation = ++_identityRefreshGeneration;
     final status = await _identity.status();
-    final personalActivity = await _identity.activity();
-    if (!mounted) return;
+    if (!mounted || generation != _identityRefreshGeneration) return;
     setState(() {
       _identityStatus = status;
-      _lifecycle = personalActivity.lifecycleEvents;
+      _identityStatusLoaded = true;
     });
+    // History is supplementary: it must not hold status or manual recovery
+    // behind an unrelated network request.
+    unawaited(_refreshIdentityActivity(generation));
+  }
+
+  Future<void> _refreshIdentityActivity(int generation) async {
+    try {
+      final personalActivity = await _identity.activity();
+      if (!mounted || generation != _identityRefreshGeneration) return;
+      setState(() => _lifecycle = personalActivity.lifecycleEvents);
+    } catch (_) {
+      // Keep the current identity when supplementary history is unavailable.
+    }
   }
 
   void _reconcileAccessSessionPolling(NativeGattWorkerHealth health) {
@@ -565,6 +580,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
       _health?.backgroundAccessStatus ?? BackgroundAccessStatus.checking;
 
   String _readinessTitle(AppLocalizations strings) {
+    if (!_identityStatusLoaded) return '상태 확인 중';
     if (_identityStatus.nextAction == 'status_unavailable') {
       return strings.statusCheckNeeded;
     }
@@ -591,6 +607,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
   }
 
   String _readinessDetail(AppLocalizations strings) {
+    if (!_identityStatusLoaded) return '이 휴대폰의 등록 상태를 확인하고 있습니다.';
     if (_identityStatus.nextAction == 'status_unavailable') {
       return strings.backendStatusUnavailableDetail;
     }
@@ -750,7 +767,8 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
     final eligible = _identityStatus.accessReady &&
         _identityStatus.nextAction != 'status_unavailable';
     final ready = eligible && _backgroundStatus == BackgroundAccessStatus.ready;
-    final informational = eligible && !_backgroundStatus.needsAttention;
+    final informational = !_identityStatusLoaded ||
+        (eligible && !_backgroundStatus.needsAttention);
     return RefreshIndicator(
       onRefresh: _loadAll,
       child: ListView(

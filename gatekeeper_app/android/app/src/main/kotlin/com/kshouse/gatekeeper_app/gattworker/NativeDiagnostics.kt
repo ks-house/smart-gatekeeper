@@ -16,6 +16,7 @@ import javax.net.ssl.HttpsURLConnection
 internal object NativeDiagnostics {
   enum class Event { PROCESS_STARTED, HEARTBEAT, CAPTURE_REQUESTED, DISPATCH_SKIPPED,
     WORK_ENQUEUED, ENQUEUE_FAILED, WORKER_STARTED, WORKER_FINISHED, WORKER_STOPPED,
+    PRESENCE_WAIT_STARTED, PRESENCE_WAIT_RESUMED, PRESENCE_WAIT_EXPIRED,
     SCAN_REGISTRATION, SCAN_EXIT, ORPHAN_RECOVERED, MANUAL_OPEN_CONTEXT, INCIDENT_CAPTURE }
   private const val PREFS = "native_diagnostic_outbox_v1"
   private const val CONFIG = "diagnostic-upload-config-v1"

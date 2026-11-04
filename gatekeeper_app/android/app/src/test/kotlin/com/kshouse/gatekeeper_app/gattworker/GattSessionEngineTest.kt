@@ -9,6 +9,54 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GattSessionEngineTest {
+  @Test fun parentTimeoutCannotBecomeAWorkerRetryOutcome() = runBlocking {
+    val transport = FakeTransport(targetHello, challenge, successResult(challenge.copyOfRange(26, 42)))
+    transport.blockConnect = true
+    var returnedOutcome: SessionOutcome? = null
+    kotlinx.coroutines.withTimeoutOrNull(10) {
+      returnedOutcome = GattSessionEngine(transport,
+        DeterministicFakeCredentialSigner(fixtureSignature), timeoutMs = 10_000,
+        clock = MonotonicClock { 100 }, mobileBuild = 100).run("fixture", credential)
+    }
+    assertEquals(null, returnedOutcome)
+    assertEquals(0, transport.proofWrites)
+    assertTrue(transport.closed)
+  }
+
+  @Test fun cancellationBeforeProofPropagatesWithoutRetryOutcome() = runBlocking {
+    val transport = FakeTransport(targetHello, challenge, successResult(challenge.copyOfRange(26, 42)))
+    var cancelled = false
+    try {
+      GattSessionEngine(transport, DeterministicFakeCredentialSigner(fixtureSignature),
+        clock = MonotonicClock { 100 }, mobileBuild = 100,
+        proofObserver = object : ProofExecutionObserver {
+          override fun beforeProofWrite() { throw kotlinx.coroutines.CancellationException("stopped") }
+        }).run("fixture", credential)
+    } catch (_: kotlinx.coroutines.CancellationException) { cancelled = true }
+    assertTrue(cancelled)
+    assertEquals(0, transport.proofWrites)
+    assertTrue(transport.closed)
+  }
+
+  @Test fun cancellationAfterProofKeepsUncertainStateAndCannotReplay() = runBlocking {
+    val transport = FakeTransport(targetHello, challenge, successResult(challenge.copyOfRange(26, 42)))
+    var state = DurableSessionState.RUNNING
+    var cancelled = false
+    try {
+      GattSessionEngine(transport, DeterministicFakeCredentialSigner(fixtureSignature),
+        clock = MonotonicClock { 100 }, mobileBuild = 100,
+        proofObserver = object : ProofExecutionObserver {
+          override fun beforeProofWrite() { state = DurableSessionState.PROOF_UNCERTAIN }
+          override fun afterProofWrite() { throw kotlinx.coroutines.CancellationException("stopped") }
+        }).run("fixture", credential)
+    } catch (_: kotlinx.coroutines.CancellationException) { cancelled = true }
+    assertTrue(cancelled)
+    assertEquals(1, transport.proofWrites)
+    assertEquals(DurableSessionState.PROOF_UNCERTAIN, state)
+    assertFalse(DurableAttemptPolicy.canExecute(state))
+    assertTrue(transport.closed)
+  }
+
   @Test fun missingHintProbeCannotDowngradeToLegacyOrSignWithoutV2Service() = runBlocking {
     val transport = FakeTransport(targetHello, challenge, byteArrayOf(), protocolMode = GattProtocolMode.LEGACY_V1)
     val signer = DeterministicFakeCredentialSigner(fixtureSignature)

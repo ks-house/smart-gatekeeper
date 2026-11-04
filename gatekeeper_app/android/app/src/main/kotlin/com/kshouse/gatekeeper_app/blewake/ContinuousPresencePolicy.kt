@@ -59,7 +59,10 @@ object ContinuousPresencePolicy {
         // A new fresh ready advertisement can recover a known pre-proof link
         // failure without a minute-long dead period. Authorization denials keep
         // their existing backoff; unresolved proofs never reach this branch.
-        val transient = last.reasonCode in setOf(
+        val preProofFreshness = last.requiresFreshPresence &&
+          last.reasonCode == "PRESENCE_EXPIRED" && last.transportReason == "FRESH_PACKET_REQUIRED" &&
+          last.targetReasonCode == null
+        val transient = preProofFreshness || last.reasonCode in setOf(
           "GATT_CONNECT_FAILED", "GATT_DISCONNECTED", "GATT_TIMEOUT", "TARGET_BUSY",
         )
         // One fast recovery after the ordinary wake. If that fresh-presence

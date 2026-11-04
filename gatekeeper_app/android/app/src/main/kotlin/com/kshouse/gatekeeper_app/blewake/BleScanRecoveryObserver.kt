@@ -9,7 +9,7 @@ import androidx.work.WorkerParameters
 import com.kshouse.gatekeeper_app.gattworker.NativeDiagnostics
 import java.util.concurrent.TimeUnit
 
-internal enum class BleScanRecoveryReason { PROCESS_START, APP_FOREGROUND, BLUETOOTH_ON, CALLBACK_ERROR, QUIET_REFRESH }
+internal enum class BleScanRecoveryReason { PROCESS_START, APP_FOREGROUND, APP_BACKGROUND, SCREEN_OFF, BLUETOOTH_ON, CALLBACK_ERROR, QUIET_REFRESH }
 
 /** Observes one finite window on the existing owner/registrations. Never opens a second scanner. */
 internal object BleScanRecoveryObserver {
