@@ -8161,3 +8161,18 @@
 - Owner explicitly approves GitHub publication and signed mobile update delivery after the concrete local implementation/verification report. Prior publication hold is resolved by that approval, not by changing tools.
 - WSL gh auth status succeeds for the existing user account; only credential availability is recorded and no raw token is displayed/stored. Preserve dirty primary and publish the isolated codex/mobile-background-recovery-20261104 changes through normal PR checks.
 - Local native167/Flutter133/root490(16 environment skips)/OTA/analyzer/format/debugAPK evidence remains applicable; no runtime code changed since validation. Signed hosted publication, phone installation and physical/OEM entry remain separately pending.
+
+
+## [2026-11-04] code | Merge reviewed mobile recovery and start signed main release
+
+- PR475 head02140676369394309c24ac414b35669f41ded316 passes hosted Android41833319979, OTA41833319432 and trusted41833319848. The exact expected-head merge succeeds as5a04d99f9fa63f5078b863086a3fd6ed31187244.
+- Main automatic mobile run41835142803(run469) and OTA41835142598 start for the merged source. No duplicate manual dispatch, Backend deploy or Target firmware action. Existing personal tailscale/SFTP4222 path remains unchanged.
+- Read-only preflight confirms the current signed mobile baseline46101/5053a3a and Target552/3edc4b4. Required secret names exist; no secret values were read. Signed publication/readback and phone installation remain pending at this checkpoint.
+
+
+## [2026-11-04] test | Verify signed46901 private mobile publication and unchanged services
+
+- Main mobile41835142803 completes SUCCESS at22:38:57 KST for5a04d99f9fa63f5078b863086a3fd6ed31187244; main OTA41835142598 passes. Personal signed1.0.0-g5a04d99/46901 is55,692,441B/SHA7eb19d1b0e704ea271370dac43cfd120a356513a442ca91a7ae330c32558f2de.
+- Independent complete primary/fallback HTTPS downloads and both manifests match signed CI bytes/source/package/version. APK certificate pin and both Ed25519 signatures verify with the source-pinned public-key hash. Receipt confirms atomic APK/metadata swaps and retained previous valid46101 pairs.
+-22:41:55 KST read-only Backend64b5c2f/readiness12/fresh collectors and Target boot912/552/VALID/IDLE/relayOFF remain; Target public manifest is unchanged. Latest observed phone is still46101(capture22:41:29,receipt22:41:30), owner attribution unknown. New phone installation and physical/OEM entry are not claimed.
+- Mobile private publication closes only that460 sub-gate; external SSH/refirewall and backup461 are untouched. No door/reboot/TargetOTA/phone setting command. Update owning wiki/plan and keep raw diagnostic JSON outside Git.

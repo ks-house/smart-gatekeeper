@@ -1,5 +1,7 @@
 # Private OTA publisher transport - issue460
 
+> Current mobile publication: [signed46901 verified](mobile_background_recovery_2026_11_04.md). External SSH refusal/restart-persistence gates remain separate.
+
 ## Current state and rollout boundary
 
 The owner's2026-10-17 instruction defers backup work461. Work now prioritizes
@@ -160,3 +162,9 @@ VALID health. This is personal-lane proof, not commercial production approval.
 This closes the Target publication evidence gap only. Mobile private atomic
 publication and subsequent external SSH refusal remain pending in460. Keep
 the firewall disabled baseline and owner-deferred461 backup unchanged.
+
+
+## 2026-11-04 actual private mobile publication
+
+Main5a04d99 mobile41835142803 successfully joins the existing private publisher route, signs46901 and atomically publishes both roots. Sanitized receipt confirms atomic APK/metadata swaps and prior valid pair retention. Independent full HTTPS downloads match signed CI bytes, package/source/version, APK signer pin and both Ed25519 metadata signatures.
+This closes the mobile publication/readback evidence gap only. Issue460 still has external SSH refusal/restart-persistence work; no firewall/network/account/backup setting was changed. Target publication/install remains the earlier552 evidence. Mobile phone installation/physical entry is not inferred from publication.

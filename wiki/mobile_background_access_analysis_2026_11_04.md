@@ -1,6 +1,6 @@
 # 화면 OFF·최근 앱에서 닫은 뒤 출입 실패 상세 분석 — 2026-11-04
 
-> Follow-up: [implemented and locally verified](mobile_background_recovery_2026_11_04.md); this original analysis describes the pre-fix baseline. Publication and installation remain pending.
+> Follow-up: [implemented and locally verified](mobile_background_recovery_2026_11_04.md); this original analysis describes the pre-fix baseline. Signed46901 publication is now verified; phone installation remains pending.
 
 > 분석 완료. 이번 신고의 동일 휴대폰 재현·수정·배포는 미수행. 사용자에게 확인한 ‘앱 종료’는 **최근 앱 목록에서 위로 밀어 닫기**이며 설정의 강제 중지가 아니다.
 > 조사: 최신 소스, 고정 의존성 원본, 읽기 전용 Backend 진단, 기존 로컬 검사. 출입·재부팅·OTA·운영 설정 변경 없음.
