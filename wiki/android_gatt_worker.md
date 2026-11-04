@@ -1,6 +1,6 @@
 # Android native BLE GATT credential worker
 
-> 2026-11-04 local implementation: [background recovery](mobile_background_recovery_2026_11_04.md). Bounded native lifecycle registration and fresh-RF waiting preserve proof/OTA guards. Initial Home checking is independent of authentication. Publication/installation and physical/OEM acceptance remain pending.
+> 2026-11-04 local implementation: [background recovery](mobile_background_recovery_2026_11_04.md). Bounded native lifecycle registration and fresh-RF waiting preserve proof/OTA guards. Initial Home checking is independent of authentication. Signed personal mobile46901 publication is verified; phone installation and physical/OEM acceptance remain pending.
 
 > Hardwareless RC for issues #17 and #133. The personal local-bootstrap, background action-1 worker and foreground action-2 manual-open paths are implemented and software-tested; current phone/relay physical evidence remains pending.
 

@@ -1455,3 +1455,10 @@ No Target command, reboot, OTA trigger, relay action or physical success is infe
 | Date | Result | Notes |
 |---|---|---|
 |2026-11-04|LOCAL SOFTWARE PASS / PHYSICAL PENDING|Root490(16 environment skips), native167, Flutter133, analyzer/format/OTA contract and debug APK build; no phone installation or actuator trial. [Details](mobile_background_recovery_2026_11_04.md)|
+
+
+## 2026-11-04 signed mobile publication
+
+| Date | Result | Notes |
+|---|---|---|
+|2026-11-04|SIGNED MOBILE PUBLICATION PASS / INSTALL-PHYSICAL PENDING|Personal46901 via private SFTP; both HTTPS APKs, signer/Ed25519/source/hash and retained previous pair verified. Backend12/Target552 unchanged. No actuation trial.|

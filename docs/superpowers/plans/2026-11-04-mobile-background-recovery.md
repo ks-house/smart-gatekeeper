@@ -44,7 +44,7 @@
 - [x] Run complete root/native/Flutter suites and OTA gate; build Android debug APK in WSL Docker.
 - [x] Independent code review, fix findings with regression tests.
 - [x] Update wiki status/index/log and verification evidence; keep physical/OEM qualification separate.
-- [ ] Prepare source commit/PR after publication authorization and authentication. Automatic review rejected the credential/publication step because the current authorization covers implementation/testing. No staging/commit/push performed.
+- [x] Owner explicitly authorized publication; PR475 merged after hosted checks and signed personal46901 publication/readback was verified. The earlier review hold is historical.
 
 ## Progress
 - Isolated worktree created from main6126342; baseline12 source/native-host checks PASS.
@@ -56,3 +56,5 @@
 - Debug APK build PASS (local verification only, not an installation update). Preserve the worktree pending publication approval.
 
 - Owner explicitly authorizes GitHub publication and signed mobile update delivery on2026-11-04. GitHub auth status succeeds; credential is available without printing raw material. Publication proceeds, with installed/physical acceptance tracked separately.
+
+- Completed signed publication: main41835142803 SUCCESS,46901/source5a04d99, full primary/fallback/signature/hash/source/previous-pair verification. Phone/OEM/physical acceptance remains pending; no actuator command issued.

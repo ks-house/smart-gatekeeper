@@ -1,6 +1,6 @@
 # Mobile background recovery implementation - 2026-11-04
 
-> LOCAL IMPLEMENTATION/VERIFICATION COMPLETE. Owner explicitly authorized GitHub publication and signed mobile update delivery on 2026-11-04. Publication is in progress; installation and screen-off/task-swipe physical acceptance remain pending.
+> SIGNED PERSONAL MOBILE PUBLICATION VERIFIED: build46901 /1.0.0-g5a04d99. Phone installation and screen-off/task-swipe physical acceptance remain pending.
 > Branch: codex/mobile-background-recovery-20261104. Base: 612634206f8228500241789390cdd339f1d35a97. Primary dirty NAS checkout preserved.
 
 ## Resulting behavior
@@ -55,3 +55,21 @@ The owner subsequently explicitly approved GitHub publication and signed mobile 
 - [Scan lifecycle](mobile_app_scan_lifecycle.md)
 - [Native GATT worker](android_gatt_worker.md)
 - [OTA reliability contract](ota_reliability_contract.md)
+
+## Reviewed merge and release in progress
+
+PR475 exact0214067 passes hosted Android41833319979, OTA41833319432 and trusted41833319848; merged5a04d99f9fa63f5078b863086a3fd6ed31187244.
+Automatic main mobile run41835142803(run469) is in progress. No duplicate dispatch or Backend/Target deployment is performed. Existing private transport/identity/signing/rollback contracts are unchanged. Final signed readback is recorded after completion below.
+
+## 2026-11-04 signed publication verified
+
+- [PR475](https://github.com/ks-house/smart-gatekeeper/pull/475) merges to5a04d99f9fa63f5078b863086a3fd6ed31187244 after all three required checks.
+- [Main mobile41835142803](https://github.com/ks-house/smart-gatekeeper/actions/runs/41835142803) finishes SUCCESS at22:38:57 KST. Main OTA41835142598 also passes. No duplicate dispatch or Backend/Target deployment.
+- Personal signed mobile: **1.0.0-g5a04d99 /46901**, package com.kshouse.gatekeeper_app,55,692,441 bytes.
+- APK SHA256: 7eb19d1b0e704ea271370dac43cfd120a356513a442ca91a7ae330c32558f2de.
+- Independently verified the complete primary/fallback HTTPS APKs, byte-identical signed manifests and CI artifact, APK signer certificate pin, package/version/source identity, and both Ed25519 manifest signatures using the APK public key matched to the existing source-pinned public-key hash.
+- Sanitized CI receipt confirms both atomic fixed-APK/metadata swaps and retained previous valid46101 pairs. Personal-lane production_authorized/release_evidence remain false; commercial/physical gates are not promoted.
+-22:41:55 KST final read-only service check: Backend64b5c2f/readiness12/fresh Target/live collectors. Target remains boot912/552/3edc4b4, IDLE/relay OFF/image valid; public Target manifest byte-identical to preflight.
+- Latest observed reporting phone still46101 at capture22:41:29.482/receipt22:41:30.039. Reporter attribution is unknown. New46901 phone installation, OEM and actual door passage remain unverified.
+
+Evidence stays in ignored gatekeeper_app/build/mobile-publication-20261104/ and /tmp/sgk-mobile-publish-preflight-20261104/; raw diagnostic JSON is not committed. The earlier publication hold is resolved by the explicit owner approval and completed authenticated publication above.
