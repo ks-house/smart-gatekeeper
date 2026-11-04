@@ -8137,3 +8137,27 @@
 - One authorized signed ota_check is acknowledged. Separate new-boot firmware2.1.552+main.g3edc4b4 health establishes install/VALID; three verified samples show IDLE/relay OFF, BLE ready, no OTA error or stalled/gapped evidence queue; Backend12 readiness checks pass.
 - Owner confirms actual manual door opening is normal; verified signed manual completion succeeds. No automatic ARM/superseded event appears in this post-install window, so do not claim field preemption, automatic sensor recovery or broader physical gates passed.
 - Target private publication proof advances460; mobile publication/external SSH refusal remain open. Lab flag-order follow-up473 remains unimplemented after automatic approval rejection. No unattended door command, sensor threshold/GPIO/timing change, NAS firewall activation or deferred461 backup work.
+
+
+## [2026-11-04] code | Start approved mobile background recovery
+
+- Owner approves proceeding from the detailed screen-off/task-swipe analysis. Isolate latest main6126342 in codex/mobile-background-recovery-20261104; preserve dirty primary.
+- Plan bounded fresh-packet waiting before BLE ownership, one safe pre-proof recovery, native lifecycle registration reconciliation and accurate Home checking state. Keep signing/ACL/proof/OTA and no actuator verification boundary.
+- Baseline12 source/native-host checks PASS. Flutter/native TDD regressions precede production edits. Raw diagnostic JSON remains outside the repository.
+
+
+## [2026-11-04] fix | Verify local mobile background recovery and preserve publication hold
+
+- Implement Application-level Activity-stop/SCREEN_OFF filtered-registration checks with durable60s throttle, bounded WorkManager chain/cancellation generation, current-feature guard and unchanged periodic watchdog. No scanner or proof is created by diagnosis.
+- Restored workers wait at most10s within45s dispatch age for actual same-Target fresh RF before BLE lease; recheck credential/authority afterward and RF after lease/before proof. Preserve5s freshness, exactly one explicit pre-proof fast recovery and PROOF_UNCERTAIN no-replay. External/parent cancellation now propagates without new retry outcomes; secret/lease cleanup is retained.
+- Home checking/status/activity and stale async responses are separated. Add existing-schema native wait phases only. Protected workflows/dependencies/firmware/signing/partitions remain unchanged. Existing UI/installer-independent OTA contract remains; no new persistent update suppression flag.
+- RED verified freshness/cancellation/disabled queued registration and parent timeout; final native167 tests/0 errors/failures/skips confirmed from JUnit XML, Flutter133 PASS, root490/16 explicit environment skips/0 failures, Dart format/analyzer and OTA contract PASS. Debug APK build PASS; it is local compile evidence, not an install update. Independent full/delta source review found no new critical/important defect.
+- Preserve worktree codex/mobile-background-recovery-20261104 and update analysis/implementation/plan/index/status/hardware/lifecycle docs. Generated desktop registration files restored. No door/reboot/Target OTA/phone/NAS setting action and no claim of physical/OEM acceptance; actual worker+Keystore field integration remains pending.
+- Automatic review rejected GitHub credential/publication preparation as outside implementation/testing authorization. No token retrieval, stage/commit/push/PR/deploy followed. Request explicit owner publication/update-delivery approval only after the concrete local work and verification are complete.
+
+
+## [2026-11-04] code | Authorize reviewed GitHub publication and signed mobile release
+
+- Owner explicitly approves GitHub publication and signed mobile update delivery after the concrete local implementation/verification report. Prior publication hold is resolved by that approval, not by changing tools.
+- WSL gh auth status succeeds for the existing user account; only credential availability is recorded and no raw token is displayed/stored. Preserve dirty primary and publish the isolated codex/mobile-background-recovery-20261104 changes through normal PR checks.
+- Local native167/Flutter133/root490(16 environment skips)/OTA/analyzer/format/debugAPK evidence remains applicable; no runtime code changed since validation. Signed hosted publication, phone installation and physical/OEM entry remain separately pending.

@@ -1448,3 +1448,10 @@ No Target command, reboot, OTA trigger, relay action or physical success is infe
 | OTA contract/trusted policy | PASS/42 tests PASS | Reviewed release input and validator pins unchanged |
 | Actual install and owner manual use | PASS |2.1.552+main.g3edc4b4, new boot/VALID, three verified healthy samples; owner confirms door opening and signed manual completion corroborates |
 | Busy-ARM field preemption / automatic sensor qualification | Pending | No automatic ARM/superseded event in the post-install window; no unattended actuation or sensor-fault conclusion |
+
+
+## 2026-11-04 software-only mobile recovery validation
+
+| Date | Result | Notes |
+|---|---|---|
+|2026-11-04|LOCAL SOFTWARE PASS / PHYSICAL PENDING|Root490(16 environment skips), native167, Flutter133, analyzer/format/OTA contract and debug APK build; no phone installation or actuator trial. [Details](mobile_background_recovery_2026_11_04.md)|

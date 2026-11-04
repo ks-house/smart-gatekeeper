@@ -1,5 +1,7 @@
 # 모바일 앱 비콘 스캔 생애주기
 
+> 2026-11-04 local implementation: [background recovery](mobile_background_recovery_2026_11_04.md). Bounded native lifecycle registration and fresh-RF waiting preserve proof/OTA guards. Initial Home checking is independent of authentication. Publication/installation and physical/OEM acceptance remain pending.
+
 ## 2026-09-15 home integration correction (published45401)
 
 Home title/detail/icon, settings card and scan-registration description now use

@@ -116,21 +116,29 @@ object BleWakeRegistrar {
   private fun finishRegistration(context: Context, result: BleWakeRegistrationResult) {
     BleWakeReconciliationScheduler.ensureWatchdog(context)
     if (result.reconciled) {
-      BleWakeReconciliationScheduler.cancel(context)
+      BleWakeReconciliationScheduler.cancelTransient(context)
     } else {
       BleWakeReconciliationScheduler.scheduleIfRetryable(context, result)
     }
   }
 
   @Synchronized
-  internal fun reconcileRequestedWithoutScheduling(context: Context): BleWakeRegistrationResult {
-    if (BleForegroundDiscovery.busy()) return status(context)
+  internal fun reconcileRequestedWithoutScheduling(
+    context: Context,
+    lifecycleReason: BleScanRecoveryReason? = null,
+  ): BleWakeRegistrationResult {
     val evidence = readEvidence(context)
-    if (!evidence.requested) {
-      return result(evidence.copy(status = "not_registered"))
+    if (!evidence.requested) return result(evidence.copy(status = "not_registered"))
+    if (BleForegroundDiscovery.busy()) return result(evidence.copy(
+      status = "native_owner_unavailable", reconciled = false))
+    if (inFlightSession(context)) return result(evidence.copy(
+      status = "native_owner_unavailable", reconciled = false))
+    if (lifecycleReason != null) {
+      val current = status(context)
+      if (current.reconciled && BleScanRecoveryPolicy.freshPacket(
+          System.currentTimeMillis(), BleScanDiagnostics.snapshot(context)["lastPacketAtEpochMs"] as? Long)) return current
     }
-    if (inFlightSession(context)) return result(evidence.copy(status = "native_owner_unavailable"))
-    BleScanRecoveryObserver.begin(context, BleScanRecoveryReason.CALLBACK_ERROR)
+    BleScanRecoveryObserver.begin(context, lifecycleReason ?: BleScanRecoveryReason.CALLBACK_ERROR)
     return registerOnce(context)
   }
 

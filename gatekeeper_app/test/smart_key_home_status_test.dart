@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +12,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class FakeIdentity extends MobileIdentityService {
+  Future<MobileIdentityStatus> Function()? readStatus;
+  Future<MobilePersonalActivity> Function()? readActivity;
+
   MobileIdentityStatus value = const MobileIdentityStatus(
     enrollmentState: EnrollmentState.approved,
     accessReady: true,
@@ -20,10 +25,13 @@ class FakeIdentity extends MobileIdentityService {
   );
 
   @override
-  Future<MobileIdentityStatus> status() async => value;
+  Future<MobileIdentityStatus> status() async =>
+      readStatus == null ? value : await readStatus!();
   @override
   Future<MobilePersonalActivity> activity({String? targetSessionId}) async =>
-      MobilePersonalActivity.empty;
+      readActivity == null
+          ? MobilePersonalActivity.empty
+          : await readActivity!();
   @override
   Future<Map<Object?, Object?>?> configureNativeDiagnostics({
     required bool enabled,
@@ -91,6 +99,10 @@ void main() {
   });
 
   Future<void> showHome(WidgetTester tester) async {
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
     await tester.pumpWidget(MaterialApp(
       locale: const Locale('ko'),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -198,6 +210,107 @@ void main() {
     await showHome(tester);
     expect(find.text('Target 신호 확인 중'), findsNothing);
     expect(headlineIcon(tester).color, Colors.amberAccent);
+    await disposeHome(tester);
+  });
+
+  testWidgets('initial pending identity is checking rather than unavailable',
+      (tester) async {
+    final status = Completer<MobileIdentityStatus>();
+    identity.readStatus = () => status.future;
+    await showHome(tester);
+    expect(find.text('상태 확인 중'), findsOneWidget);
+    expect(find.text('상태 확인 필요'), findsNothing);
+    expect(headlineIcon(tester).color, Colors.lightBlueAccent);
+
+    status.complete(MobileIdentityStatus.unavailable);
+    await tester.pumpAndSettle();
+    expect(find.text('상태 확인 필요'), findsOneWidget);
+    expect(headlineIcon(tester).color, Colors.amberAccent);
+    await disposeHome(tester);
+  });
+
+  testWidgets('ready identity is visible while activity is still pending',
+      (tester) async {
+    final activity = Completer<MobilePersonalActivity>();
+    identity.readActivity = () => activity.future;
+    await showHome(tester);
+    expect(find.text('Target 신호 확인 중'), findsOneWidget);
+    expect(find.text('상태 확인 필요'), findsNothing);
+    expect(find.text('문 열기'), findsOneWidget);
+
+    var refreshFinished = false;
+    final refresh = tester
+        .widget<RefreshIndicator>(find.byType(RefreshIndicator).first)
+        .onRefresh();
+    unawaited(refresh.then((_) => refreshFinished = true));
+    await tester.pumpAndSettle();
+    expect(refreshFinished, isTrue);
+
+    activity.completeError(StateError('activity unavailable'));
+    await tester.pumpAndSettle();
+    expect(find.text('Target 신호 확인 중'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await disposeHome(tester);
+  });
+
+  testWidgets('late older status cannot replace a newer identity response',
+      (tester) async {
+    final older = Completer<MobileIdentityStatus>();
+    identity.readStatus = () => older.future;
+    await showHome(tester);
+
+    identity.readStatus = null;
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pumpAndSettle();
+    expect(find.text('Target 신호 확인 중'), findsOneWidget);
+
+    older.complete(MobileIdentityStatus.unavailable);
+    await tester.pumpAndSettle();
+    expect(find.text('Target 신호 확인 중'), findsOneWidget);
+    expect(find.text('상태 확인 필요'), findsNothing);
+    await disposeHome(tester);
+  });
+
+  testWidgets('identity completion after disposal is ignored', (tester) async {
+    final status = Completer<MobileIdentityStatus>();
+    identity.readStatus = () => status.future;
+    await showHome(tester);
+    await disposeHome(tester);
+    status.complete(identity.value);
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('late older activity cannot replace newer lifecycle history',
+      (tester) async {
+    final older = Completer<MobilePersonalActivity>();
+    identity.readActivity = () => older.future;
+    await showHome(tester);
+
+    identity.readActivity =
+        () async => MobilePersonalActivity(lifecycleEvents: [
+              MobileLifecycleEvent(
+                eventRef: 'new-revocation',
+                type: 'credential_revoked',
+                createdAt: DateTime.utc(2026, 11, 4),
+              ),
+            ]);
+    await tester.tap(find.byIcon(Icons.refresh));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.history));
+    await tester.pumpAndSettle();
+    expect(find.text('스마트키 권한 해제'), findsOneWidget);
+
+    older.complete(MobilePersonalActivity(lifecycleEvents: [
+      MobileLifecycleEvent(
+        eventRef: 'old-approval',
+        type: 'credential_approved',
+        createdAt: DateTime.utc(2026, 11, 3),
+      ),
+    ]));
+    await tester.pumpAndSettle();
+    expect(find.text('스마트키 권한 해제'), findsOneWidget);
+    expect(find.text('스마트키 승인 완료'), findsNothing);
     await disposeHome(tester);
   });
 }

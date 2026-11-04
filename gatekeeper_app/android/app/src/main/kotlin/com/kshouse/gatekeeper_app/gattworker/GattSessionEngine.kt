@@ -1,6 +1,8 @@
 package com.kshouse.gatekeeper_app.gattworker
 
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 enum class MtuNegotiationStatus {
   NOT_REQUESTED,
@@ -220,7 +222,7 @@ class GattSessionEngine(
     )
 
     return try {
-      withTimeout(timeoutMs) {
+      withTimeoutOrNull(timeoutMs) {
         transport.connect(deviceAddress)
         connectSetupMs = markPhase()
         if (requireFastV2 && transport.protocolMode != GattProtocolMode.FAST_V2) {
@@ -255,6 +257,7 @@ class GattSessionEngine(
         )
         val signature = signer.signCanonical(credentialId, canonical)
         signingMs = markPhase()
+        currentCoroutineContext().ensureActive()
         proofObserver.beforeProofWrite()
         proofMayHaveExecuted = true
         transport.writeProof(
@@ -288,7 +291,12 @@ class GattSessionEngine(
             performance = performance(),
           )
         }
-      }
+      } ?: SessionOutcome.Failure(
+        AccessReasonCode.GATT_TIMEOUT,
+        elapsed(started),
+        proofMayHaveExecuted = proofMayHaveExecuted,
+        performance = performance(),
+      )
     } catch (error: EarlyTargetResultException) {
       val targetReason = TargetResultReason.fromWireCode(error.result.reason)
       SessionOutcome.Failure(
@@ -299,13 +307,10 @@ class GattSessionEngine(
         proofMayHaveExecuted = proofMayHaveExecuted,
         performance = performance(),
       )
-    } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
-      SessionOutcome.Failure(
-        AccessReasonCode.GATT_TIMEOUT,
-        elapsed(started),
-        proofMayHaveExecuted = proofMayHaveExecuted,
-        performance = performance(),
-      )
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+      // WorkManager stop/logout is not a transport failure or a new retry.
+      // The worker's durable pre-proof boundary preserves uncertainty after proof.
+      throw cancelled
     } catch (_: SecurityException) {
       SessionOutcome.Failure(
         AccessReasonCode.PERMISSION_DENIED,

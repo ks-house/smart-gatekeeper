@@ -12,6 +12,7 @@ class GatekeeperApplication : Application() {
   override fun onCreate() {
     super.onCreate()
     BleWakeBluetoothStateMonitor.start(this)
+    runCatching { com.kshouse.gatekeeper_app.blewake.BleWakeLifecycleMonitor.start(this) }
     AccessResultNotifier.createChannel(this)
     // Existing consent only; no network activity or Flutter dependency on this thread.
     runCatching { NativeDiagnostics.onProcessStart(this) }

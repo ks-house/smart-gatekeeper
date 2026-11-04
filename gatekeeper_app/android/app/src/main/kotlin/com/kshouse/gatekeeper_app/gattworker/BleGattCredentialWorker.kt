@@ -273,107 +273,140 @@ class BleGattCredentialWorker(
       BleGattWorkScheduler.enqueueRetry(applicationContext, initial.id, remainingDelayMs)
       return Result.success()
     }
-    com.kshouse.gatekeeper_app.blewake.BleForegroundDiscovery.cancel(applicationContext, "CANCELLED_GATT")
-    val ownerLease = CrossProcessBleOwnerCoordinator.forContext(applicationContext).tryAcquireNative()
-      ?: return scheduleOwnershipRetry(ledger, initial)
+    val secret = vault.load(sessionId) ?: run {
+      terminateFailure(ledger, vault, initial, AccessReasonCode.CREDENTIAL_INACTIVE,
+        "ENCRYPTED_LOCATOR_UNAVAILABLE")
+      return Result.failure()
+    }
     try {
-      val secret = vault.load(sessionId) ?: run {
-        terminateFailure(
-          ledger,
-          vault,
-          initial,
-          AccessReasonCode.CREDENTIAL_INACTIVE,
-          "ENCRYPTED_LOCATOR_UNAVAILABLE",
-        )
-        return Result.failure()
+      if (initial.requiresFreshPresence) {
+        var waited = false
+        val remaining = HandsFreeDispatchPolicy.MAX_PRESENCE_AGE_MS -
+          HandsFreeDispatchPolicy.presenceAgeMs(initial.createdEpochMs, System.currentTimeMillis())
+        val presence = FreshPresenceAwaiter.await(
+          remaining,
+          MonotonicClock { android.os.SystemClock.elapsedRealtime() },
+          { ContinuousPresenceTracker.fresh(secret.deviceAddress, android.os.SystemClock.elapsedRealtime()) },
+          { BleGattFeatureFlagStore(applicationContext).decision().newWorkerEnabled },
+        ) {
+          waited = true
+          NativeDiagnostics.record(applicationContext, NativeDiagnostics.Event.PRESENCE_WAIT_STARTED,
+            "FRESH_PACKET_REQUIRED", sessionId)
+        }
+        when (presence) {
+          FreshPresenceWaitResult.DISABLED -> {
+            terminateDisabled(ledger, vault, initial)
+            return Result.success()
+          }
+          FreshPresenceWaitResult.EXPIRED -> {
+            NativeDiagnostics.record(applicationContext, NativeDiagnostics.Event.PRESENCE_WAIT_EXPIRED,
+              "FRESH_PACKET_REQUIRED", sessionId)
+            terminateFailure(ledger, vault, initial, AccessReasonCode.PRESENCE_EXPIRED, "FRESH_PACKET_REQUIRED")
+            return Result.success()
+          }
+          FreshPresenceWaitResult.FRESH -> if (waited) {
+            NativeDiagnostics.record(applicationContext, NativeDiagnostics.Event.PRESENCE_WAIT_RESUMED,
+              "FRESH_PACKET_RECEIVED", sessionId)
+          }
+        }
       }
+      // Waiting never owns the radio or increments an attempt. Re-check authority
+      // after suspension, before stopping discovery or acquiring the BLE lease.
+      if (!BleGattFeatureFlagStore(applicationContext).decision().newWorkerEnabled) {
+        terminateDisabled(ledger, vault, initial)
+        return Result.success()
+      }
+      if (!HandsFreeDispatchPolicy.isFresh(initial.createdEpochMs, System.currentTimeMillis())) {
+        terminateFailure(ledger, vault, initial, AccessReasonCode.PRESENCE_EXPIRED, "PRESENCE_AGE_EXCEEDED")
+        return Result.success()
+      }
+      val current = ledger.get(sessionId) ?: return Result.failure()
+      if (!DurableAttemptPolicy.canExecute(current.state)) return Result.success()
       val configuredCredential = BleCredentialConfigStore(applicationContext).credentialId()
       if (configuredCredential == null || !configuredCredential.contentEquals(secret.credentialId)) {
         configuredCredential?.fill(0)
-        secret.credentialId.fill(0)
-        terminateFailure(
-          ledger,
-          vault,
-          initial,
-          AccessReasonCode.CREDENTIAL_INACTIVE,
-          "CREDENTIAL_BINDING_MISMATCH",
-        )
+        terminateFailure(ledger, vault, initial, AccessReasonCode.CREDENTIAL_INACTIVE, "CREDENTIAL_BINDING_MISMATCH")
         return Result.failure()
       }
       configuredCredential.fill(0)
-      if (initial.requiresFreshPresence && !ContinuousPresenceTracker.fresh(
-          secret.deviceAddress, android.os.SystemClock.elapsedRealtime())) {
-        secret.credentialId.fill(0)
-        terminateFailure(ledger, vault, initial, AccessReasonCode.PRESENCE_EXPIRED, "FRESH_PACKET_REQUIRED")
-        return Result.success()
-      }
-      val attempt = initial.attempt + 1
-      val runningEpochMs = System.currentTimeMillis()
-      val running = initial.copy(
-        attempt = attempt,
-        state = DurableSessionState.RUNNING,
-        updatedEpochMs = runningEpochMs,
-        dispatchStartedEpochMs = runningEpochMs,
-        presenceToDispatchMs = HandsFreeDispatchPolicy.presenceAgeMs(
-          initial.createdEpochMs,
-          runningEpochMs,
-        ),
-        presenceToArmedMs = null,
-        reasonCode = null,
-        targetReasonCode = null,
-        targetReasonName = null,
-        transportReason = null,
-        transportStatus = null,
-        retryAfterMs = null,
-        scheduledRetryDelayMs = null,
-        gattPerformance = null,
-      )
-      ledger.update(running)
-      var flagDisabledBeforeProof = false
-      val outcome = GattSessionEngine(
-        transport = AndroidBleGattTransport(applicationContext, requireFastV2 = initial.requiresFastV2),
-        signer = AndroidKeystoreCredentialSigner(),
-        proofObserver = object : ProofExecutionObserver {
-          override fun onChallengeObserved(targetSessionId: String) {
-            val current = ledger.get(sessionId) ?: throw IllegalStateException("session disappeared")
-            check(current.state == DurableSessionState.RUNNING)
-            ledger.update(current.copy(targetSessionId = targetSessionId))
-          }
-          override fun beforeProofWrite() {
-            if (initial.requiresFreshPresence && !ContinuousPresenceTracker.fresh(
-                secret.deviceAddress, android.os.SystemClock.elapsedRealtime())) {
-              throw PresenceExpiredBeforeProofException()
+      com.kshouse.gatekeeper_app.blewake.BleForegroundDiscovery.cancel(applicationContext, "CANCELLED_GATT")
+      val ownerLease = CrossProcessBleOwnerCoordinator.forContext(applicationContext).tryAcquireNative()
+        ?: return scheduleOwnershipRetry(ledger, initial)
+      try {
+        // Discovery cleanup or ownership acquisition may outlive the fresh sample.
+        if (initial.requiresFreshPresence && !ContinuousPresenceTracker.fresh(
+            secret.deviceAddress, android.os.SystemClock.elapsedRealtime())) {
+          terminateFailure(ledger, vault, initial, AccessReasonCode.PRESENCE_EXPIRED, "FRESH_PACKET_REQUIRED")
+          return Result.success()
+        }
+        val attempt = initial.attempt + 1
+        val runningEpochMs = System.currentTimeMillis()
+        val running = initial.copy(
+          attempt = attempt,
+          state = DurableSessionState.RUNNING,
+          updatedEpochMs = runningEpochMs,
+          dispatchStartedEpochMs = runningEpochMs,
+          presenceToDispatchMs = HandsFreeDispatchPolicy.presenceAgeMs(
+            initial.createdEpochMs,
+            runningEpochMs,
+          ),
+          presenceToArmedMs = null,
+          reasonCode = null,
+          targetReasonCode = null,
+          targetReasonName = null,
+          transportReason = null,
+          transportStatus = null,
+          retryAfterMs = null,
+          scheduledRetryDelayMs = null,
+          gattPerformance = null,
+        )
+        ledger.update(running)
+        var flagDisabledBeforeProof = false
+        val outcome = GattSessionEngine(
+          transport = AndroidBleGattTransport(applicationContext, requireFastV2 = initial.requiresFastV2),
+          signer = AndroidKeystoreCredentialSigner(),
+          proofObserver = object : ProofExecutionObserver {
+            override fun onChallengeObserved(targetSessionId: String) {
+              val current = ledger.get(sessionId) ?: throw IllegalStateException("session disappeared")
+              check(current.state == DurableSessionState.RUNNING)
+              ledger.update(current.copy(targetSessionId = targetSessionId))
             }
-            if (!BleGattFeatureFlagStore(applicationContext).decision().newWorkerEnabled) {
-              flagDisabledBeforeProof = true
-              throw FeatureFlagDisabledBeforeProofException()
+            override fun beforeProofWrite() {
+              if (initial.requiresFreshPresence && !ContinuousPresenceTracker.fresh(
+                  secret.deviceAddress, android.os.SystemClock.elapsedRealtime())) {
+                throw PresenceExpiredBeforeProofException()
+              }
+              if (!BleGattFeatureFlagStore(applicationContext).decision().newWorkerEnabled) {
+                flagDisabledBeforeProof = true
+                throw FeatureFlagDisabledBeforeProofException()
+              }
+              val current = ledger.get(sessionId) ?: throw IllegalStateException("session disappeared")
+              check(
+                current.state == DurableSessionState.RUNNING &&
+                  ledgerUpdateUncertain(ledger, current),
+              ) { "failed durable pre-proof commit" }
+              // A crash after this boundary must not retain or reuse raw connection locators.
+              vault.delete(sessionId)
             }
-            val current = ledger.get(sessionId) ?: throw IllegalStateException("session disappeared")
-            check(
-              current.state == DurableSessionState.RUNNING &&
-                ledgerUpdateUncertain(ledger, current),
-            ) { "failed durable pre-proof commit" }
-            // A crash after this boundary must not retain or reuse raw connection locators.
-            vault.delete(sessionId)
-          }
-        },
-      ).run(
-        secret.deviceAddress,
-        secret.credentialId,
-        GattProtocol.ACTION_ARM_FOR_SENSOR,
-        requireFastV2 = initial.requiresFastV2,
-      )
-      if (flagDisabledBeforeProof) {
-        secret.credentialId.fill(0)
-        terminateDisabled(ledger, vault, ledger.get(sessionId) ?: running)
-        return Result.success()
+          },
+        ).run(
+          secret.deviceAddress,
+          secret.credentialId,
+          GattProtocol.ACTION_ARM_FOR_SENSOR,
+          requireFastV2 = initial.requiresFastV2,
+        )
+        if (flagDisabledBeforeProof) {
+          terminateDisabled(ledger, vault, ledger.get(sessionId) ?: running)
+          return Result.success()
+        }
+        val result = commitOutcome(ledger, vault,
+          running.copy(targetSessionId = ledger.get(sessionId)?.targetSessionId), secret, outcome)
+        return result
+      } finally {
+        ownerLease.close()
       }
-      val result = commitOutcome(ledger, vault,
-        running.copy(targetSessionId = ledger.get(sessionId)?.targetSessionId), secret, outcome)
-      secret.credentialId.fill(0)
-      return result
     } finally {
-      ownerLease.close()
+      secret.credentialId.fill(0)
     }
   }
 
@@ -465,7 +498,10 @@ class BleGattCredentialWorker(
     },
     targetReasonCode = failure.targetReason?.wireCode,
     targetReasonName = failure.targetReason?.wireName,
-    transportReason = failure.transportFailure?.name,
+    transportReason = if (failure.reason == AccessReasonCode.PRESENCE_EXPIRED &&
+        !failure.proofMayHaveExecuted && failure.targetReason == null) {
+      "FRESH_PACKET_REQUIRED"
+    } else failure.transportFailure?.name,
     transportStatus = failure.transportStatus,
     retryAfterMs = failure.retryAfterMs,
     scheduledRetryDelayMs = scheduledDelayMs,
