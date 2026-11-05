@@ -346,8 +346,10 @@ class ConnectivityRecoveryContractTests(unittest.TestCase):
     dns = self.mqtt.split("MqttDnsPollResult pollMqttDns", 1)[1]
     dns = dns.split("bool parseLowerHex16", 1)[0]
     self.assertIn("dns_gethostbyname_addrtype", dns)
-    self.assertIn("MQTT_DNS_RESOLVE_TIMEOUT_MS", dns)
-    self.assertIn("mqttDnsGeneration", dns)
+    self.assertIn("MqttDnsPolicy mqttDnsPolicy(MQTT_DNS_RESOLVE_TIMEOUT_MS)", self.mqtt)
+    self.assertIn("mqttDnsPolicy.poll(now)", dns)
+    self.assertIn("generation = mqttDnsPolicy.begin(now)", dns)
+    self.assertIn("sgk::MqttDnsPoll::kTimedOut", dns)
     self.assertNotIn("Network.hostByName", dns)
     update = self.mqtt.split("void MqttManager::update()", 1)[1]
     resolve = update.index("pollMqttDns(&brokerAddress)")
@@ -406,7 +408,7 @@ class ConnectivityRecoveryContractTests(unittest.TestCase):
     enroll = worker.index("esp_task_wdt_add(nullptr)")
     tls = worker.index("wifiClient.connect(", enroll)
     mqtt = worker.index("client.connect(", tls)
-    first_feed = worker.index("feedWatchdog();", tls)
+    first_feed = worker.index("if (!feedWatchdog())", tls)
     self.assertLess(enroll, tls)
     self.assertLess(tls, first_feed)
     self.assertLess(first_feed, mqtt)

@@ -79,6 +79,12 @@ class GattServer {
   // serialized with NimBLE callbacks, but is not a reservation against a new
   // callback that starts after this function returns.
   static bool hasPendingIngress();
+  // Atomically reserve idle BLE admission for a brief network-only mutation.
+  // No mutex remains held after success. Call release only after acquiring;
+  // callers must separately exclude physical access, OTA and transport owners.
+  static bool tryReserveIdleRadio();
+  static void releaseIdleRadio();
+  static bool hasIdleRadioReservation();
   static uint32_t getActiveConnections();
   static bool isOtaBusy();
   static void setOtaBusy(bool busy);

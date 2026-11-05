@@ -4,6 +4,7 @@ import hashlib
 import json
 import unittest
 from contextlib import ExitStack
+from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
 from fastapi import FastAPI
@@ -264,3 +265,76 @@ class LegacyCanonicalBundleTest(unittest.TestCase):
         self.assertNotIn("scan", minimal["native"])
         self.assertIn("runtime", minimal["native"])
         self.assertIsNone(minimal["native"]["runtime"])
+
+
+AVAILABILITY_CHECKED = 1_789_300_000_000
+AVAILABILITY_MAX_AGE = 90250
+
+
+def availability_projection(state, *, age=None, last=None):
+    return dict(state=state, checked_at_epoch_ms=AVAILABILITY_CHECKED,
+                last_verified_at_epoch_ms=last, observed_age_ms=age,
+                max_age_ms=AVAILABILITY_MAX_AGE)
+
+
+class MobileAvailabilityScopeTest(unittest.TestCase):
+    observe = PersonalDiagnosticBaselineScopeTest.observe
+
+    def setUp(self):
+        PersonalDiagnosticBaselineScopeTest.setUp(self)
+        self.db.conn.execute(
+            "CREATE TABLE target_access_status_highwater (target_id TEXT, received_at TEXT)"
+        )
+
+    def availability(self, tenant=TENANT, credential=CREDENTIAL):
+        provider = getattr(main, "_personal_target_availability", None)
+        self.assertTrue(callable(provider), "scoped mobile availability provider is required")
+        return provider(tenant, credential)
+
+    def test_verified_status_ages_and_replay_never_refreshes_it(self):
+        self.observe()
+        self.assertEqual(availability_projection("fresh", age=0, last=AVAILABILITY_CHECKED), self.availability())
+        self.monotonic.return_value += 91
+        self.wall.return_value += 91
+        self.assertFalse(self.observe(advanced=False))
+        self.assertEqual(dict(availability_projection("stale", age=91000, last=AVAILABILITY_CHECKED),
+                              checked_at_epoch_ms=AVAILABILITY_CHECKED+91000), self.availability())
+        self.observe()
+        self.assertEqual("fresh", self.availability()["state"])
+
+    def test_submillisecond_past_freshness_boundary_is_not_rounded_back_to_fresh(self):
+        self.observe()
+        self.monotonic.return_value += 90.2501
+        self.wall.return_value += 90.2501
+        value = self.availability()
+        self.assertEqual("stale", value["state"])
+        self.assertGreater(value["observed_age_ms"], value["max_age_ms"])
+
+    def test_persisted_timestamp_after_registry_clear_is_explanation_only(self):
+        self.db.conn.execute("INSERT INTO target_access_status_highwater VALUES (?,?)",
+                             (TARGET, datetime.fromtimestamp(AVAILABILITY_CHECKED/1000, timezone.utc).isoformat()))
+        self.observe()
+        self.registry.clear()
+        value = self.availability()
+        self.assertEqual("unknown", value["state"])
+        self.assertEqual(AVAILABILITY_CHECKED, value["last_verified_at_epoch_ms"])
+        self.assertIsNone(value["observed_age_ms"])
+        self.assertTrue(all(sql.startswith("SELECT ") for sql, _ in self.db.calls))
+
+    def test_wrong_scope_or_inactive_credential_cannot_read_target_evidence(self):
+        self.observe()
+        for tenant, credential in (("e"*32, CREDENTIAL), (TENANT, "f"*32)):
+            self.assertIsNone(self.availability(tenant, credential))
+        for column, value in (("status", "REVOKED"), ("expires_at", int(self.wall.return_value))):
+            self.db.conn.execute(f"UPDATE credentials SET {column}=?", (value,))
+            self.assertIsNone(self.availability())
+            self.db.conn.rollback()
+        self.door.return_value = "e"*32
+        self.assertIsNone(self.availability())
+
+    def test_lookup_failure_is_unknown_and_future_clock_never_fresh(self):
+        self.observe()
+        self.wall.return_value -= 1
+        self.assertEqual("unknown", self.availability()["state"])
+        self.get_db.side_effect = RuntimeError("private detail")
+        self.assertEqual("unknown", self.availability()["state"])

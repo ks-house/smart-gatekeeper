@@ -39,6 +39,16 @@ public:
     // by the caller after the access-critical guard has cleared.
     static void observeConnectivity(uint32_t nowMs);
     static void serviceRecovery(uint32_t nowMs);
+    // Caller owns idle-radio admission and has quiesced every network worker.
+    // Requests are asynchronous and never erase saved credentials or the AP.
+    static bool beginStationRepair();
+    static bool finishStationRepair(bool restartInterface);
+    // false releases only this repair's pending state for an AP/OTA owner.
+    // true also restores normal auto reconnect, under idle-radio admission.
+    static void cancelStationRepair(bool restoreAutoReconnect);
+    static bool isStationRepairPending();
+    static bool isStationAssociated();
+    static bool isLocalRecoveryActive();
     static void handleClient();
     static bool isConnected();
     static bool isAPMode();

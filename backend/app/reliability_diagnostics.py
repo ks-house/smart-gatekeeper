@@ -68,6 +68,19 @@ def mqtt_connection_projection(value):
             "edges": list(edges)}
 
 
+def network_recovery_projection(value):
+    """Optional unsigned counters; never access, ACL or signed-health authority."""
+    counters = ("started", "completed", "rejected", "timeouts", "cancelled",
+                "deferred", "reserve_failures", "commit_failures")
+    if (not isinstance(value, dict) or type(value.get("schema")) is not int
+            or value["schema"] != 1 or type(value.get("active")) is not bool
+            or any(type(value.get(key)) is not int or not 0 <= value[key] <= U32
+                   for key in counters)):
+        return None
+    return {"schema": 1, "active": value["active"],
+            **{key: value[key] for key in counters}}
+
+
 UUID4 = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 CORE_FIELDS = (
     "target_id", "source_boot_id", "source_boot_count", "status_revision", "state",
@@ -111,6 +124,16 @@ ACTION_CODES = set("""unknown boot network_services_start mqtt_connected mqtt_dn
     recovery_ap_deadline_deferred_for_local_operation""".split()) | {"restart:" + value for value in RESTART_REASONS}
 # DiagnosticsManager's RTC action buffer stores at most31 bytes. Preserve exact
 # known truncations as advisory tokens, without interpreting them as full codes.
+ACTION_CODES |= {
+    "wifi_station_repair_lease_expired",
+    "wifi_station_repair_disconnect_rejected",
+    "wifi_station_repair_disconnect_requested",
+    "wifi_station_repair_reassociate_requested",
+    "wifi_station_repair_reassociate_rejected",
+    "wifi_station_repair_mode_rejected",
+    "wifi_station_repair_restart_requested",
+    "wifi_station_repair_restart_rejected",
+}
 ACTION_CODES |= {value[:31] for value in ACTION_CODES}
 ACTION_CODES |= {"mqtt_ota_suspend", "mqtt_ota_resume"}
 ACCESS_STAGES = {"unknown", "UNKNOWN", "BOOTING", "GATT_CONNECTED", "GATT_FAILED", "CHALLENGE_ISSUED",
@@ -387,6 +410,9 @@ def advisory_projection(document, *, include_boot=False, expected=None):
     mqtt = mqtt_connection_projection(document.get("mqtt_connection"))
     if mqtt is not None:
         result["mqtt_connection"] = mqtt
+    recovery = network_recovery_projection(document.get("network_recovery"))
+    if recovery is not None:
+        result["network_recovery"] = recovery
     ota = ota_advisory_projection(document.get("ota"))
     if ota is not None:
         result["ota"] = ota

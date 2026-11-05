@@ -38,6 +38,8 @@ class MqttConnectionPolicyTests(unittest.TestCase):
         self.assertIn("sgk::MqttLossReason::kTransportLost", suspend)
 
     def test_json_pool_and_wire_budget_preserve_signed_status(self):
+        self.assertTrue((ROOT / "include/NetworkRecoveryJson.h").is_file(),
+                        "bounded optional network recovery serializer is required")
         include = os.environ.get("SGK_ARDUINOJSON_INCLUDE")
         if not include:
             candidates = list((ROOT / ".pio/libdeps").glob("*/ArduinoJson/src/ArduinoJson.h"))

@@ -58,6 +58,8 @@
 | [mobile_screen_off_incident_analysis.md](mobile_screen_off_incident_analysis.md) | 화면 OFF 출입 실패의 확정 증거, 원인 우선순위, 단계별 판별·실기기 수집 절차 |
 | [mobile_background_access_analysis_2026_11_04.md](mobile_background_access_analysis_2026_11_04.md) | Current screen-off/task-swipe analysis and approved mobile recovery work; [implementation plan](../docs/superpowers/plans/2026-11-04-mobile-background-recovery.md) |
 | [mobile_background_recovery_2026_11_04.md](mobile_background_recovery_2026_11_04.md) | Native lifecycle/fresh-RF recovery and Home checking; signed46901 publication verified, phone/physical acceptance pending |
+| [target_network_recovery_2026_11_05.md](target_network_recovery_2026_11_05.md) | Bounded DNS/MQTT STA recovery, access/OTA exclusion, diagnostics and mobile availability; field gates remain |
+| [acl_wait_incident_2026_11_05.md](acl_wait_incident_2026_11_05.md) | 9843 권한 대기: Target 상태 공백·DNS 실패와 마지막15분 ACL 만료, 같은boot 복귀·9846 APPLIED 및 사용자 Home 정상 확인 |
 | [access_incident_2026_08_01.md](access_incident_2026_08_01.md) | 출입 지연·반복 개방·화면 OFF 현장 분석과 Target FSM·Backend MQTT 보장 범위 |
 | [personal_prod_incident_2026_08_12.md](personal_prod_incident_2026_08_12.md) | 개인 PROD 모바일 등록·문 열기 배포와 매립 Target MQTT/Wi-Fi/OTA 장애 증거 및 재개 절차 |
 | [wife_phone_access_latency_2026_09_02.md](wife_phone_access_latency_2026_09_02.md) | 관리자/HA의 ARMED→RELAY 약 7초 증거, access-critical MQTT deferral, pre-ARMED GATT v2 fast-path 후보와 설치 후 검증 Gate |

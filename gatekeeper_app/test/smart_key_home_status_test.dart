@@ -313,4 +313,108 @@ void main() {
     expect(find.text('스마트키 승인 완료'), findsNothing);
     await disposeHome(tester);
   });
+
+  MobileIdentityStatus availabilityIdentity(String state,
+          {bool applied = false,
+          int age = 0,
+          int maxAge = 90250,
+          String enrollment = 'approved'}) =>
+      MobileIdentityStatus.fromJson({
+        'enrollment_state': enrollment,
+        'access_ready': applied,
+        'next_action': enrollment == 'revoked'
+            ? 'contact_administrator'
+            : enrollment == 'pending'
+                ? 'wait_for_approval'
+                : enrollment == 'expired'
+                    ? 'renew_credential'
+                    : applied
+                        ? 'none'
+                        : 'wait_for_acl',
+        'door_count': 1,
+        'target_synced': applied,
+        'acl_version': 42,
+        'target_availability': {
+          'state': state,
+          'checked_at_epoch_ms': 1793880000000,
+          'last_verified_at_epoch_ms': 1793880000000 - age,
+          'observed_age_ms': state == 'unknown' ? null : age,
+          'max_age_ms': maxAge,
+        },
+      });
+
+  testWidgets(
+      'Target stale then fresh then ACL applied are separate Home states',
+      (tester) async {
+    health.addAll({
+      'handsFreeReady': true,
+      'wakeRegistered': true,
+      'wakeRegistrationStatus': 'REGISTERED'
+    });
+    identity.value = availabilityIdentity('stale', age: 120000);
+    await showHome(tester);
+    expect(find.text('현관 장치 통신 확인 필요'), findsOneWidget);
+    expect(find.textContaining('자동 복구 완료도 아직 확인되지 않았습니다.'), findsOneWidget);
+    expect(find.textContaining('마지막 검증 통신'), findsOneWidget);
+    expect(headlineIcon(tester).color, Colors.amberAccent);
+    expect(find.text('상태 새로고침'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.settings));
+    await tester.pumpAndSettle();
+    expect(find.text('앱 업데이트'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.home_outlined));
+    await tester.pumpAndSettle();
+
+    identity.value = availabilityIdentity('fresh');
+    await tester.tap(find.byIcon(Icons.refresh));
+    await tester.pumpAndSettle();
+    expect(find.text('출입 권한 동기화 대기'), findsOneWidget);
+    expect(find.textContaining('장치 통신은 확인됐습니다.'), findsOneWidget);
+    expect(find.text('문 열기'), findsNothing);
+
+    identity.value = availabilityIdentity('fresh', applied: true);
+    await tester.tap(find.byIcon(Icons.refresh));
+    await tester.pumpAndSettle();
+    expect(find.text('스마트키 설정 준비됨'), findsOneWidget);
+    expect(find.text('문 열기'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.settings));
+    await tester.pumpAndSettle();
+    expect(find.text('앱 업데이트'), findsOneWidget);
+    await disposeHome(tester);
+  });
+
+  testWidgets('cached Target freshness expires without a new identity response',
+      (tester) async {
+    health.addAll({
+      'handsFreeReady': true,
+      'wakeRegistered': true,
+      'wakeRegistrationStatus': 'REGISTERED'
+    });
+    identity.value = availabilityIdentity('fresh', applied: true, maxAge: 1000);
+    await showHome(tester);
+    expect(find.text('스마트키 설정 준비됨'), findsOneWidget);
+    identity.readStatus = () => Completer<MobileIdentityStatus>().future;
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(find.text('현관 장치 통신 확인 필요'), findsOneWidget);
+    // An advisory warning must not change the existing authorization/action.
+    expect(find.text('문 열기'), findsOneWidget);
+    await disposeHome(tester);
+  });
+
+  testWidgets(
+      'explicit unknown is visible but account decisions take precedence',
+      (tester) async {
+    identity.value = availabilityIdentity('unknown');
+    await showHome(tester);
+    expect(find.text('현관 장치 상태 확인 불가'), findsOneWidget);
+    for (final enrollment in ['pending', 'revoked', 'expired']) {
+      identity.value =
+          availabilityIdentity('stale', age: 120000, enrollment: enrollment);
+      await tester.tap(find.byIcon(Icons.refresh));
+      await tester.pumpAndSettle();
+      expect(find.text('현관 장치 통신 확인 필요'), findsNothing);
+      expect(find.text('현관 장치 상태 확인 불가'), findsNothing);
+    }
+    await disposeHome(tester);
+  });
 }

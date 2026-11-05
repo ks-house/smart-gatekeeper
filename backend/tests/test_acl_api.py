@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -880,6 +880,103 @@ class AclApiTest(unittest.TestCase):
             },
         )
         self.assertEqual(503, response.status_code)
+
+
+
+
+AVAILABILITY_CHECKED = 1_789_300_000_000
+AVAILABILITY_MAX_AGE = 90250
+
+
+def availability_projection(state, *, age=None, last=None):
+    return dict(state=state, checked_at_epoch_ms=AVAILABILITY_CHECKED,
+                last_verified_at_epoch_ms=last, observed_age_ms=age,
+                max_age_ms=AVAILABILITY_MAX_AGE)
+
+
+class MobileAvailabilityApiTest(unittest.TestCase):
+    def setUp(self):
+        AclApiTest.setUp(self)
+        self.addCleanup(self.conn.close)
+        self.device = "DEV-AVAILABILITY-TEST"
+        self.credential = "31" * 16
+        signer = DeterministicP256Signer(31, signing_key_id=0)
+        self.body = dict(device_id=self.device, credential_id=self.credential,
+                         public_key_sec1=signer.public_key_sec1.hex())
+        self.conn.execute(
+            "INSERT INTO tenants (name,unit_number,ble_device_mac,is_active,tenant_uuid) VALUES (?,?,?,1,?)",
+            ("resident", "unit", legacy_device_storage_id(self.device), TENANT_A),
+        )
+        self.conn.commit()
+        self.service.bootstrap_personal_credential(
+            TENANT_A, DOOR, self.device, self.credential,
+            self.body["public_key_sec1"], actor_ref="test",
+        )
+
+    def availability_client(self, callback):
+        config = AclApiConfig(
+            enabled=True, enrollment_credentials={}, admin_key="unused",
+            target_credentials={}, personal_enabled=True, personal_api_key="key",
+            personal_tenant_id=TENANT_A, personal_door_id=DOOR,
+            personal_target_availability=callback,
+        )
+        app = FastAPI()
+        app.include_router(create_acl_router(self.service, config))
+        client = TestClient(app)
+        self.addCleanup(client.close)
+        return client
+
+    def status(self, client, **changes):
+        return client.post("/api/v1/acl/personal/status",
+                           json={**self.body, **changes}, headers={"X-API-KEY": "key"})
+
+    def test_stale_fresh_then_exact_ack_preserves_existing_authorization(self):
+        callback = Mock(return_value=availability_projection("stale", age=120000, last=AVAILABILITY_CHECKED-120000))
+        client = self.availability_client(callback)
+        stale = self.status(client).json()
+        self.assertEqual(callback.return_value, stale.get("target_availability"))
+        self.assertFalse(stale["access_ready"])
+        self.assertEqual("wait_for_acl", stale["next_action"])
+        callback.assert_called_with(TENANT_A, self.credential)
+        callback.return_value = availability_projection("fresh", age=0, last=AVAILABILITY_CHECKED)
+        fresh = self.status(client).json()
+        self.assertEqual("fresh", fresh.get("target_availability", {}).get("state"))
+        self.assertFalse(fresh["access_ready"])
+        snapshot = self.store.latest_snapshot(TENANT_A, DOOR)
+        self.service.ack_snapshot(TENANT_A, "target-a", DOOR,
+                                  snapshot["acl_version"], snapshot["sha256"], "APPLIED")
+        applied = self.status(client).json()
+        self.assertTrue(applied["access_ready"])
+        self.assertTrue(applied["target_synced"])
+        self.assertEqual("none", applied["next_action"])
+
+    def test_old_callback_absence_and_denied_identity_do_not_expose_availability(self):
+        old = self.availability_client(None)
+        self.assertNotIn("target_availability", self.status(old).json())
+        callback = Mock(return_value=availability_projection("fresh", age=0, last=AVAILABILITY_CHECKED))
+        client = self.availability_client(callback)
+        denied = self.status(client, public_key_sec1=DeterministicP256Signer(32, signing_key_id=0).public_key_sec1.hex())
+        self.assertIn(denied.status_code, (403, 422))
+        callback.assert_not_called()
+        for status in ("PENDING", "REVOKED"):
+            self.conn.execute("UPDATE credentials SET status=?", (status,))
+            self.conn.commit()
+            self.assertNotIn("target_availability", self.status(client).json())
+        callback.assert_not_called()
+
+    def test_bad_projection_or_lookup_error_is_unknown_without_changing_acl_wait(self):
+        for value in ({"state": "fresh"}, availability_projection("fresh", age=-1, last=AVAILABILITY_CHECKED),
+                      {**availability_projection("fresh", age=0, last=AVAILABILITY_CHECKED), "raw": "private"},
+                      availability_projection("fresh", age=AVAILABILITY_MAX_AGE+1, last=AVAILABILITY_CHECKED-AVAILABILITY_MAX_AGE-1)):
+            with self.subTest(value=value):
+                data = self.status(self.availability_client(Mock(return_value=value))).json()
+                self.assertEqual("unknown", data.get("target_availability", {}).get("state"))
+                self.assertFalse(data["access_ready"])
+                self.assertNotIn("private", str(data))
+        callback = Mock(side_effect=RuntimeError("private connection detail"))
+        data = self.status(self.availability_client(callback)).json()
+        self.assertEqual("unknown", data.get("target_availability", {}).get("state"))
+        self.assertNotIn("private connection detail", str(data))
 
 
 if __name__ == "__main__":

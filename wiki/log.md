@@ -8177,6 +8177,39 @@
 -22:41:55 KST read-only Backend64b5c2f/readiness12/fresh collectors and Target boot912/552/VALID/IDLE/relayOFF remain; Target public manifest is unchanged. Latest observed phone is still46101(capture22:41:29,receipt22:41:30), owner attribution unknown. New phone installation and physical/OEM entry are not claimed.
 - Mobile private publication closes only that460 sub-gate; external SSH/refirewall and backup461 are untouched. No door/reboot/TargetOTA/phone setting command. Update owning wiki/plan and keep raw diagnostic JSON outside Git.
 
+
+## [2026-11-05] test | Diagnose ACL9843 wait and confirm same-boot permission recovery
+
+- Owner reports persistent ACL9843 synchronization wait/no opening on46901 and confirms Target is embedded/inaccessible. Direct read API shows current phone reports, Target status gap20:17:26.632→21:40:04.433 and screen-off20:46 RF received but TARGET_NOT_READY/no new GATT session. Backend readiness12 alone was not Target availability.
+- Existing NAS signed/fixed clients authenticate but sudo refuses, matching a preexisting11/02 issue. Browser/Native CUA kernels fail MXC initialization; existing Chrome connection later works after owner opens NAS admin. Use only existing session, bounded UI/Grafana reads and Backend-container Python SQL START TRANSACTION READ ONLY with rollback/close; no private material output or privilege changes.
+- DB confirms last pre-gap APPLIED9840 at20:13:30/expires20:28:30;9841/9842/9843 lack applied ACK;9843 created20:53:59/expires21:08:59.9846 created21:39:40, APPLIED21:40:16 with exact SHA/latest match and no pending job at readback. User refresh now shows Smart Key ready.
+- Recovery keeps boot912/ID; connections84→85, attempts505→646/failures421→561, four retained DNS_FAILED edges and Wi-Fi generation/outage2→3. Earliest trigger/precise recovery cause remain unknown; do not call all140 failures DNS or infer reboot from old SOFTWARE boot advisory.
+-21:57 Target remains fresh/552/IDLE/relayOFF, no further failure-counter increase, BLE ready/appliedtrue. Latest21:55 phone report has ACL9846/syncedtrue/accessReadytrue but may cache identity. Physical passage and recurrence prevention remain open. Broker TLS1.2/actual MQTT135 and fresh SmartBox Influx demonstrate current server-side paths, not the full outage interval.
+- Added incident page/index/current status, preserved raw data under/tmp, no code/config/ACL writes, reboot/OTA/door command. Closed only the own read-only Python terminal session. User requests detailed explanation; report verified facts separately from hypotheses.
+
+
+## [2026-11-05] code | Start owner-requested Target no-progress recovery hardening
+
+- Owner requests recurrence prevention and Target fixes after the83-minute observed gap. Preserve existing source/incident notes in isolated codex/target-network-self-recovery-20261105. Treat bounded self-recovery/visible failure as verifiable goals; absolute hardware/network availability is not claimed.
+- Source confirms Wi-Fi-connected DNS failures have no escalation above repeated5s resolve/30s backoff. Also connect worker continues after watchdog enrollment/reset failure; actual-function fixture reproduces8 failures across21 scenarios.
+- Plan monitored worker I/O, per-generation DNS accounting, rate-limited asynchronous STA recovery with atomic GATT/physical/OTA/local-AP exclusions, optional safe diagnostics and scoped availability UI. Do not extend ACL lease or weaken authorization/signatures/OTA.
+
+## [2026-11-05] fix | Validate bounded Target network recovery and scoped availability
+
+- Add one-result-per-generation DNS/deadline handling and watchdog-failure I/O handoff. Recovery qualifies actual same-link DNS3/60s or transport6/180s, then async reassociation/STA recreation;120s gap and two accepted requests per rolling15min survive brief success/generation changes. No credential erase/TLS relaxation/lease extension/chip reboot.
+- Atomic idle-radio reservation protects GATT/physical/OTA admission without holding its mutex across radio I/O. All transport owners relinquish first; AP/local recovery/OTA take precedence. Old-link qualification across natural reconnection was reproduced and fixed with actual service/controller regression.
+- Optional unsigned counters fit the unchanged7168 JSON pool/7936 payload or are omitted (239B measured maximum). Backend closed projection preserves signed authority; Home separates scoped fresh/stale/unknown communication from ACL wait and expires cached freshness.
+- Root512 run/14 explicit environment skips/zero failures; Backend450/13 opt-in skips; complete-dependency diagnostics33; Flutter136; Android167 XML zero failures/errors/skips with unchanged-native Gradle task up-to-date. Default+effective personal-enabled C6, Dart format/analyzer and OTA contract PASS. Independent review finds no remaining confirmed blocker. Example-only local firmware is not a release artifact.
+- Owner requests WSL Docker. Native Ubuntu Engine29.9.3/containerd2.4.2/Buildx0.38.1/Compose5.7.0 verified through local Unix socket and Flutter builder. Desktop data/config/PATH/context/user groups untouched; no TCP daemon. Record current env path and separate NAS host.
+- Update implementation/incident/index/env/status/hardware evidence. No live failure injection, door/reboot/OTA command or current install claim. Source publication and signed delivery remain next; field power/router/RF/physical entry gates stay open.
+
+## [2026-11-05] fix | Repair certifi security gate before recovery delivery
+
+- PR478 original head122d882 passes trusted/OTA gates; hosted Android and firmware initially fail downloading pinned GitHub release assets with504, before application compilation. The same Java17.0.16+8 asset later returns200 and unchanged-pin retry passes Java setup; no Java/workflow/gate pin is changed.
+- Backend runtime tests pass, then pip-audit detects existing certifi2026.7.22/PYSEC-2026-4320. Duplicate advisory rows are one distinct vulnerability. Update only certifi to2026.10.19 with both PyPI wheel/sdist hashes independently checked against downloaded bytes; regenerate its version/purl and deterministic SBOM serial. Other runtime packages remain pinned.
+- Official advisory: https://osv.dev/vulnerability/PYSEC-2026-4320 ; release: https://pypi.org/project/certifi/2026.10.19/ . Isolated fixed lock installs with require-hashes/pip-check and audit reports zero vulnerabilities. Backend regression includes derived-SBOM consistency.
+- requirements.lock is one of23 protected inputs. Preserve validator, inventory, signing and workflow bytes; prepare a separate exact-source persistent-baseline admission for only its new digest. No check suppression, runtime NAS change, Target request or install claim.
+
 ## [2026-11-05] fix | Review exact certifi security input admission
 
 - PR478 frozen570831b fixes existing PYSEC-2026-4320 in locked certifi2026.7.22. Candidate2026.10.19 wheel/sdist bytes match both official hashes; isolated hash-enforced install/pip-check, Backend450/13 opt-in skips and pip-audit zero findings pass. No suppression or other dependency update.
