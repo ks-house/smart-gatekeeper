@@ -4,6 +4,12 @@
 >
 > 목적: 출입 기능과 별개로 Wi-Fi, MQTTS, HTTPS OTA의 원격 복구 가능성을 계속 보장한다.
 
+## 2026-11-06 현재 적용 상태
+
+[재발 방지 구현·운영 증거](target_network_recovery_2026_11_05.md): main2dfe93a의 Target557이 boot913으로 설치되어 VALID를 통과했다. Wi-Fi가 연결된 채 DNS/MQTT가 진전하지 않는 경우 실제 실패 횟수·기간으로 STA 재연결/인터페이스 재생성을 단계적으로 허용한다. 출입·GATT·OTA·local AP와 socket owner를 원자적으로 배제하며 자동 chip reboot, credential 삭제, TLS 완화, ACL lease 연장은 없다. 새 Backend의 가용성 표시와 모바일47401 게시도 검증했다.
+
+이는 정상 상태의 설치·건강 확인과 소프트웨어 장애 회귀 증거다. 공유기/broker/WAN 강제 단절, 전원·릴레이 전기 검증, 장기 가용성 SLO와 물리 출입 Gate는 그대로 남는다. 아래 날짜별 감사와 구형 펌웨어 기록을 현재 설치 상태로 해석하지 않는다.
+
 ## 1. 최상위 원칙
 
 1. 매립형 Target은 전원이 켜진 동안 **Wi-Fi STA와 per-Target MQTTS 세션을 항상 유지하려고 시도**해야 한다.
@@ -24,6 +30,7 @@
 - Wi-Fi 상태는 매 loop에서 radio 변경 없이 관찰한다. 정상 STA 단절이 30초 동안 자동 복구되지 않으면 안전한 IDLE 구간에서 인증된 recovery AP로 승격하고, 실패한 AP 승격은 60초 뒤 재시도한다.
 - MQTTS가 끊긴 동안에도 재접속을 계속한다. 9월14일 Target500에 설치한 보완 구현은 5–6초, 10–12초, 20–24초, 최대30초의 jitter backoff를 사용하며 60초 연속 연결 후 초기화한다. keepalive는 120초 그대로다. 짧은 성공으로 backoff를 지우지 않고 Wi-Fi/계획 OTA 복귀 첫 시도만 즉시 허용한다. 구현과 설치·계측 범위는 [MQTT 보완 기록](mqtt_stability_analysis_2026_09_14.md)의 §8–9를 따른다. 장기 안정성은 아직 미확정이다.
 - DNS는 lwIP callback과 generation token을 사용해 loop를 막지 않고 5초에 만료한다. TCP 4초, TLS handshake 8초, MQTT protocol read 3초 단계는 secure client와 PubSubClient를 단독 소유하는 bounded connect worker 하나에서만 실행한다. Loop task와 worker는 모두 45초 task watchdog 보호를 받으며, worker는 각 bounded 단계 사이에 feed하고 모든 종료 경로에서 watchdog 등록을 해제한 뒤 결과를 넘긴다.
+- 557부터 DNS 한 generation의 terminal 실패는 한 번만 집계한다. 같은 link의 실제 DNS 실패 3회가 60초 이상에 걸치거나 transport 실패 6회가 180초 이상에 걸치면 유휴 radio 예약 아래 비동기 STA 재연결, 이후 STA 인터페이스 재생성으로 진행한다. 동작 간격 120초·rolling15분 최대2회 예산은 짧은 성공과 link 변경에도 보존한다. Watchdog 등록/feed 실패 시 다음 worker I/O를 중단하고 감시되는 main으로 정리를 인계한다. 상세 임계값·유예·검증 경계는 위 구현 기록을 따른다.
 - Connect 결과는 request ID와 Wi-Fi link generation이 모두 현재값일 때만 loop task가 채택한다. Access 진입이나 link generation 변경은 worker 취소를 요청하고, 늦게 끝난 성공·실패는 stale로 폐기한 뒤 transport를 닫는다. Worker가 객체를 소유하는 동안 loop task는 TLS/PubSubClient를 읽거나 쓰지 않는다.
 - GATT 연결, fast-v2 start/write, 인증, ranging, relay hold/cooldown 동안 MQTT/HTTPS socket 작업을 보류한다. 미인증 ingress는 10초 lease를 초과하면 해당 transport만 끊고 네트워크를 즉시 재개하며 Target을 재부팅하지 않는다. 짧은 connect/disconnect 반복은 lease를 갱신하지 않고, 30초 연속 quiet 뒤에만 새 미인증 epoch를 연다. 실제 verified action generation은 별도의 85초 physical lease를 시작한다.
 - 각 blocking 단계 직전에 callback-visible ingress를 다시 확인하고 MQTT command가 access를 시작한 같은 loop에서는 stale IDLE/status flush와 OTA를 중단한다. OTA periodic/local TLS는 MQTT connect worker가 끝난 뒤에만 시작하므로 두 handshake가 겹치지 않는다.

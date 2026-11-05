@@ -18,6 +18,19 @@ applies_to:
 
 # 현재 프로젝트 상태
 
+## 2026-11-06 재발 방지 운영 적용
+
+[구현·검증 기록](target_network_recovery_2026_11_05.md): PR478은 모든 hosted 검사 통과 후 main `2dfe93a4a0ef4e2ebcd916f0b0bf3f6bd742b53f`으로 병합됐다. 별도 정책479는 certifi 보안 패치의 보호 해시 하나만 승인했다.
+
+| 구성 요소 | 실제 확인 결과 | 남은 경계 |
+|---|---|---|
+| Target | 557 설치, 새 boot913, 00:29:28 KST VALID. 이후 같은 boot에서 IDLE·릴레이 OFF·BLE 준비, 자체 HTTPS current 확인 성공 | 실제 DNS/공유기 장애 재현·장기 SLO·물리 출입 미시험 |
+| NAS Backend | 사용자 승인 후 run42052375632 배포 성공. public exact2dfe93a, ready12/12, 신선한 검증 Target 상태 | 최신 desired ACL/APPLIED ACK는 별도 조회하지 못함 |
+| 모바일 | signed47401 게시 성공. primary/fallback APK·manifest 전체 HTTPS·Ed25519·APK signer/source 독립 검증, 이전 유효 파일 보존 | 휴대폰 설치 관측 없음 |
+| WSL 개발 환경 | Ubuntu native Docker Engine·Flutter 빌더 정상, 기존 Desktop/Windows 설정 보존 | NAS Docker와 별개 시스템 |
+
+문 개방 명령이나 live 장애 주입은 하지 않았다. BLE ready를 최신 ACL ACK 또는 실제 문 열림으로 대체하지 않는다. 아래 날짜별 pending 항목은 당시 상태이며 위 최신 결과가 현재 운영 기준이다.
+
 ## 2026-11-05 Target recurrence hardening: locally validated, delivery pending
 
 [Recovery implementation](target_network_recovery_2026_11_05.md) adds bounded same-link DNS/MQTT escalation, asynchronous STA repair with atomic access/OTA exclusion, watchdog I/O handoff and optional unsigned diagnostics. Scoped mobile availability separates stale/unknown communication from ACL wait without changing authorization. Root512/14 environment skips, Backend450/13 opt-in skips, complete-dependency diagnostics33, Flutter136, Android167 XML/zero failures-errors-skips (task up-to-date), two C6 profiles, analyzer/format and OTA contract PASS. Independent review fixed old-link qualification across natural reconnection; no confirmed blocker remains. Source publication, signed delivery, installed health and physical acceptance are still separate pending gates. Native WSL Docker Engine is working; NAS Docker/installed552 are separate systems.

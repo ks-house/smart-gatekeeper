@@ -28,4 +28,14 @@ Home consumes optional identity/door-scoped fresh/stale/unknown availability. A 
 
 Actual production-function host fixtures cover failure/race guards. Fake-clock policy/controller tests, ArduinoJson budget tests, Backend/widgets and enabled/default C6 builds cover software boundaries. Results and delivery state are in [hardware_test](hardware_test.md), [project_status](project_status.md) and [log](log.md).
 
-No unattended door command or live failure injection is used. Installed552 remains the field baseline until reviewed signed firmware is installed and new-boot health confirmed. Physical entry and power/router fault acceptance remain open.
+No unattended door command or live failure injection is used. Target557 is installed as boot913 after one safe-state-gated OTA request. Health accepts the image at00:29:28 KST on11/06; later same-boot reports stay VALID/IDLE/relay OFF/BLE ready. The previous bootable slot and previous valid published artifacts remain. Its own post-install HTTPS current-version check passes. Backend2dfe93a is independently ready12/12 with fresh verified status. Phone installation, physical entry and power/router fault acceptance remain open.
+
+### Operating evidence and remaining limits
+
+PR478 merges as2dfe93a after all hosted checks; separate policy479 changes only the certifi lock digest. Actual Target557 private publication includes clean repeat/cmp, Ed25519, encrypted full-artifact hashes, atomic swap and HTTPS verification. Independent verification uses the preexisting provisioned public macro whose SHA matches the protected production pin; no private signer or plaintext firmware is retrieved.
+
+Source tests cover bounded repair faults and ownership, while field validation confirms install/boot health and normal communication. No live DNS/router outage is injected, and zero recovery counters do not demonstrate actual staged repair in the wall unit. The post-install read API does not expose latest desired ACL/APPLIED ACK; unavailable browser transport prevented a separate read-only DB check. BLE ready is not substituted for that exact ACK. No physical-door success is claimed.
+
+### Mobile delivery
+
+Signed mobile `1.0.0-g2dfe93a / 47401` is published through42052375603. Both primary/fallback APKs and manifests independently match complete CI bytes over strict HTTPS; APK signer, embedded source and Ed25519 verification pass, with previous valid pairs retained. Phone installation is not observed. Backend availability changes become visible when the updated app is installed; the deployed Target remains N/N-1 compatible with the existing app.
