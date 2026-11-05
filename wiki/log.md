@@ -8209,3 +8209,9 @@
 - Backend runtime tests pass, then pip-audit detects existing certifi2026.7.22/PYSEC-2026-4320. Duplicate advisory rows are one distinct vulnerability. Update only certifi to2026.10.19 with both PyPI wheel/sdist hashes independently checked against downloaded bytes; regenerate its version/purl and deterministic SBOM serial. Other runtime packages remain pinned.
 - Official advisory: https://osv.dev/vulnerability/PYSEC-2026-4320 ; release: https://pypi.org/project/certifi/2026.10.19/ . Isolated fixed lock installs with require-hashes/pip-check and audit reports zero vulnerabilities. Backend regression includes derived-SBOM consistency.
 - requirements.lock is one of23 protected inputs. Preserve validator, inventory, signing and workflow bytes; prepare a separate exact-source persistent-baseline admission for only its new digest. No check suppression, runtime NAS change, Target request or install claim.
+
+## [2026-11-05] fix | Review exact certifi security input admission
+
+- PR478 frozen570831b fixes existing PYSEC-2026-4320 in locked certifi2026.7.22. Candidate2026.10.19 wheel/sdist bytes match both official hashes; isolated hash-enforced install/pip-check, Backend450/13 opt-in skips and pip-audit zero findings pass. No suppression or other dependency update.
+- Separate policy-only branch admits that exact source and lock digest635e39f063247a2805963ca4a3ca47a6269bde7dfd7427c535a81d067f7aa376. Preserve23 paths, all seven workflows/empty Actions inventory, validator and22 other digests. Closed predecessor/admitted transition only; do not permit arbitrary mismatched inputs.
+-42 policy regressions fail against the old source/identity as expected, then pass with exact admission; direct frozen-source bytes match. Independent review and hosted trusted-base check precede merge/history connection. This branch changes no runtime image/config and sends no device/door command.

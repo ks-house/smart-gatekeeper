@@ -40,11 +40,11 @@
   },
   "approved_bundles": [
     {
-      "id": "private-ota-sftp-service-baseline",
+      "id": "certifi-security-20261105-baseline",
       "mode": "persistent-baseline",
       "source": {
         "repository": "ks-house/smart-gatekeeper",
-        "commit": "feedb9411ea065032a07847ac4780c0e87635906"
+        "commit": "570831b5c4ae5daa3b47b10f20be3781586cb856"
       },
       "files": {
         ".github/workflows/backend_security.yml": "7c042c3507206363b8d86543ddc5e8987979d87af4851886dbbac49348e45546",
@@ -60,7 +60,7 @@
         "scripts/ops_commercial_gate.py": "7ed564d02342adf6da84aede9c524d47bac4246a31521cf05143a380199a43d7",
         "ota/requirements.txt": "21f985255f11f89d00cd6061a3817c860b6da951424121040e82358053cf90c7",
         "ota/requirements.lock": "5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12",
-        "backend/app/requirements.lock": "4a1f393a82340ed062e7e2efdc7b57edd8df6d6d59d62a561643c93685a19a71",
+        "backend/app/requirements.lock": "635e39f063247a2805963ca4a3ca47a6269bde7dfd7427c535a81d067f7aa376",
         "backend/app/Dockerfile": "ec66fbe0de7f4fe47edf36e594810a0bb1192cf94fa5fc81cc7fced224479573",
         "backend/db/Dockerfile": "e47c888835cffb95d8dd3b77cddd3bce7a4a16abff0ad760a80e8ab39554f81a",
         "backend/compose.production.yml": "709f70c7683636a0eb34a9822212b4369d5e5b906bbdeae81c3e2307236f953a",

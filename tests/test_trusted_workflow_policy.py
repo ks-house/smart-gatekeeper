@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import verify_trusted_workflow_policy as trusted  # noqa: E402
 
 
-MERGED_MAIN_COMMIT = "feedb9411ea065032a07847ac4780c0e87635906"
-EXPECTED_BUNDLE_ID = "private-ota-sftp-service-baseline"
+MERGED_MAIN_COMMIT = "570831b5c4ae5daa3b47b10f20be3781586cb856"
+EXPECTED_BUNDLE_ID = "certifi-security-20261105-baseline"
 LEGACY_FULL_BUNDLE_DIGEST_LINES = """\
 .github/workflows/deploy.yml 74fb06eef8e56cfd5f79f2c5bae4b6e41d798a5ccf2fb00c4aa30668db1f4dda
 .github/workflows/build_app.yml 64551776dd81ecc9018de045793e289bbcb3d52e690d0dfc5eb3f6e5253f3487
@@ -143,7 +143,7 @@ scripts/verify_target_flash_layout.py e41a91cae8260ed54913b457345fe4b4f439e2c2e6
 scripts/ops_commercial_gate.py 7ed564d02342adf6da84aede9c524d47bac4246a31521cf05143a380199a43d7
 ota/requirements.txt 21f985255f11f89d00cd6061a3817c860b6da951424121040e82358053cf90c7
 ota/requirements.lock 5b8c5859426a7febd6bd9d9b0482bf78f8f4854c2d83d0ce53ba49c14c5cea12
-backend/app/requirements.lock 4a1f393a82340ed062e7e2efdc7b57edd8df6d6d59d62a561643c93685a19a71
+backend/app/requirements.lock 635e39f063247a2805963ca4a3ca47a6269bde7dfd7427c535a81d067f7aa376
 backend/app/Dockerfile ec66fbe0de7f4fe47edf36e594810a0bb1192cf94fa5fc81cc7fced224479573
 backend/db/Dockerfile e47c888835cffb95d8dd3b77cddd3bce7a4a16abff0ad760a80e8ab39554f81a
 backend/compose.production.yml 709f70c7683636a0eb34a9822212b4369d5e5b906bbdeae81c3e2307236f953a
@@ -155,16 +155,10 @@ backend/deploy/sgk_backend_ssh_dispatch.sh 6e80dedc8a546062fe038d7a537383aa65eb1
 ops/backend_trusted_bundle_paths.json e9080dbfcd8c76d874cb908ae7e238481070f8668e4c87b84bb77902693f6852
 """
 FEATURE_CHANGED_PROTECTED_PATHS = {
-    '.github/workflows/backend_security.yml',
-    '.github/workflows/build_app.yml',
-    '.github/workflows/deploy.yml',
-    'scripts/ota_contract_gate.py',
+    'backend/app/requirements.lock',
 }
 PREDECESSOR_CHANGED_DIGESTS = {
-    ".github/workflows/backend_security.yml": "bf947f365c7ce5043fed1e8420b5e66cd4954ad699e4a82a2654e4707a8c026e",
-    ".github/workflows/build_app.yml": "c19f9e3b6f921acfc2ac6d531b0bafdc43ac02a5aa36c0fc4427bfb18dfd633f",
-    ".github/workflows/deploy.yml": "6f2852fa328dcde812ac8553a01b737e685479c4e62a14a296b624ffd061a72c",
-    "scripts/ota_contract_gate.py": "825797d86b783a001f520a18ac302a03f312ea51fd8ce26ac3e3ba04601a6c25"
+    'backend/app/requirements.lock': '4a1f393a82340ed062e7e2efdc7b57edd8df6d6d59d62a561643c93685a19a71',
 }
 MERGED_MAIN_DIGESTS = dict(
     line.split() for line in MERGED_MAIN_DIGEST_LINES.splitlines()
@@ -188,6 +182,7 @@ RETIRED_MAIN_SAMPLE_DIGESTS = {
     ),
 }
 RETIRED_SOURCE_COMMITS = {
+    "feedb9411ea065032a07847ac4780c0e87635906",
     '84b300a55de1670a2f846499d3af64a978cea40b',
     'cb7372989605e04c0ec2b4342f382c48d46ec327',
     "b836d7edbee25f495e8228997ff0bac6e5f9a1df",
@@ -1138,8 +1133,8 @@ class TrustedWorkflowPolicyTest(unittest.TestCase):
         for path in policy["protected_paths"]
         if path not in FEATURE_CHANGED_PROTECTED_PATHS
     ]
-    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 4)
-    self.assertEqual(len(locally_unchanged_protected), 19)
+    self.assertEqual(len(FEATURE_CHANGED_PROTECTED_PATHS), 1)
+    self.assertEqual(len(locally_unchanged_protected), 22)
     for path in locally_unchanged_protected:
       with self.subTest(path=path):
         self.assertIn(path, policy["protected_paths"])
