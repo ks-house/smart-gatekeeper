@@ -47,8 +47,11 @@ class MqttIngressWorkerTest(unittest.TestCase):
         self.assertIn("if (!ingressWorker.start(", reply)
         self.assertIn("publishPacket(commandAckTopic.c_str()", reply)
         self.assertIn("pendingCriticalAck[0] = 0", reply)
-        self.assertIn("ingressWorker.ownsTransport()", source.split(
-            "bool MqttManager::connectionAttemptInProgress()", 1)[1].split("}", 1)[0])
+        owners = source.split("bool MqttManager::transportWorkersActive()", 1)[1].split("}", 1)[0]
+        self.assertIn("ingressWorker.ownsTransport()", owners)
+        attempt = source.split("bool MqttManager::connectionAttemptInProgress()", 1)[1].split("}", 1)[0]
+        self.assertIn("transportWorkersActive()", attempt)
+        self.assertIn("networkRecoveryController.active()", attempt)
         dispatch = source.split("bool MqttManager::dispatchCriticalManual", 1)[1].split(
             "void MqttManager::dispatchPendingAccessCommand", 1)[0]
         self.assertLess(dispatch.index("signedCommandAccessTracker.begin("),

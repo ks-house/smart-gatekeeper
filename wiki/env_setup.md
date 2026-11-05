@@ -69,8 +69,8 @@ PLATFORMIO_BUILD_DIR=.pio/build-wsl-default \
 Python 3.14.4, PlatformIO Core 6.1.19에서 고정 pioarduino `cbc3349`를 설치해 기본
 `esp32c6` 빌드가 성공했고, 16 MB Flash와 7,340,032-byte application partition을 확인했다.
 
-백엔드와 모바일은 WSL에 별도 Java/Android SDK/MariaDB를 중복 설치하지 않고 Docker Desktop의
-WSL integration을 사용한다. 아래 명령은 **WSL Bash**에서 실행한다.
+백엔드와 모바일은 WSL Docker 빌더를 사용한다. Docker Desktop WSL integration 또는
+Ubuntu 네이티브 Docker Engine 중 검증된 daemon을 명시한다. 아래 2026-11-05 기준선을 참고한다. 아래 명령은 **WSL Bash**에서 실행한다.
 
 ```bash
 docker --version
@@ -100,6 +100,24 @@ docker compose run --rm flutter-builder flutter --version
 당시 WSL에는 `/dev/ttyACM*` 또는 `/dev/ttyUSB*`가 없었다. 따라서 위 firmware 성공은 compiler와
 toolchain의 software evidence이고, Target upload/serial, Wi-Fi/MQTT/BLE, OTA, GPIO23 relay 또는
 AJ-SR04T 현장 동작을 증명하지 않는다.
+
+#### 2026-11-05 Ubuntu-native Docker baseline
+
+Owner asks to use WSL Docker. Native Engine29.9.3/containerd2.4.2,
+Buildx0.38.1/Compose5.7.0 run under systemd with the local Unix socket only.
+Engine/containerd active, hello-world and Flutter3.44.8 builder were verified.
+Use the explicit Linux CLI/socket to avoid selecting the broken Desktop daemon:
+
+```bash
+/usr/bin/docker --host unix:///var/run/docker.sock info
+DOCKER_HOST=unix:///var/run/docker.sock /usr/bin/docker compose version
+```
+
+The daemon has its own `/var/lib/docker` cache. Desktop data/config, Windows
+PATH/context and user groups were unchanged. No TCP listener was enabled.
+Existing trusted Dockerfile/dependency pins remain. Inspect mounts before reusing
+the local `sgk-availability-green-20261105` container for another checkout.
+NAS Docker is a separate host. WSL Engine health does not establish Target health.
 
 #### 1.0.1 WSL 2에서 ESP32-C6 Target USB 전달
 

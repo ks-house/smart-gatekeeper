@@ -6,6 +6,7 @@
 #include "DiagnosticsManager.h"
 #include "GattServer.h"
 #include "OtaManager.h"
+#include "MqttManager.h"
 #include "RecoveryRadioPolicy.h"
 #include "config.h"
 
@@ -35,6 +36,10 @@ static uint32_t wifiRecoveryApStartFailureCount = 0;
 static uint32_t wifiRecoverySuccessCount = 0;
 static bool wifiOutageNoticePending = false;
 static bool wifiRecoveryNoticePending = false;
+static bool stationRepairPending = false;
+static uint32_t stationRepairStartedMs = 0;
+static uint32_t stationRepairLinkGeneration = 0;
+constexpr uint32_t kStationRepairHoldMs = 15000;
 
 namespace {
 constexpr char kRecoveryApSsid[] = "SmartGatekeeper-Recovery";
@@ -876,6 +881,34 @@ void WifiManager::observeConnectivity(uint32_t nowMs) {
 }
 
 void WifiManager::serviceRecovery(uint32_t nowMs) {
+    if (stationRepairPending) {
+        if (isLocalRecoveryActive() || GattServer::isOtaBusy()) {
+            cancelStationRepair(false);
+            return;
+        }
+        if (nowMs - stationRepairStartedMs < kStationRepairHoldMs ||
+            MqttManager::transportWorkersActive() ||
+            !GattServer::tryReserveIdleRadio()) return;
+        cancelStationRepair(true);
+        GattServer::releaseIdleRadio();
+        DiagnosticsManager::noteAction("wifi_station_repair_lease_expired");
+        // Let ordinary outage recovery observe the released lease next tick.
+        return;
+    }
+
+    const bool radioMutation = wifiOutageNoticePending ||
+        (!apModeActive && WiFi.status() != WL_CONNECTED &&
+         stationRecoveryPolicy.actionDue(nowMs));
+    struct RadioRelease {
+        bool held;
+        ~RadioRelease() { if (held) GattServer::releaseIdleRadio(); }
+    } reservation{false};
+    if (radioMutation) {
+        if (isLocalRecoveryActive() || GattServer::isOtaBusy() ||
+            MqttManager::transportWorkersActive() ||
+            !GattServer::tryReserveIdleRadio()) return;
+        reservation.held = true;
+    }
     if (wifiOutageNoticePending) {
         wifiOutageNoticePending = false;
         // The Arduino core owns reconnect timing. Reasserting its policy is
@@ -912,6 +945,110 @@ void WifiManager::serviceRecovery(uint32_t nowMs) {
     DiagnosticsManager::noteAction("wifi_recovery_ap_escalation_failed");
     LOGF("[WIFI-ERROR] Recovery AP escalation failed; retry delayed %lu ms",
          static_cast<unsigned long>(WIFI_RECOVERY_AP_RETRY_MS));
+}
+
+bool WifiManager::isStationAssociated() {
+    return WiFi.status() == WL_CONNECTED;
+}
+
+bool WifiManager::isLocalRecoveryActive() {
+    return apModeActive || isRecoveryOperationActive(millis());
+}
+
+bool WifiManager::isStationRepairPending() {
+    return stationRepairPending;
+}
+
+void WifiManager::cancelStationRepair(bool restoreAutoReconnect) {
+    if (!stationRepairPending) return;
+    if (restoreAutoReconnect && !isLocalRecoveryActive() &&
+        !GattServer::isOtaBusy()) {
+        // A caller that lost admission must leave the finite lease for a later
+        // safe cancellation, rather than silently stranding auto reconnect OFF.
+        if (!GattServer::hasIdleRadioReservation()) return;
+        WiFi.setAutoReconnect(true);
+    }
+    stationRepairPending = false;
+    stationRepairStartedMs = 0;
+    stationRepairLinkGeneration = 0;
+}
+
+bool WifiManager::beginStationRepair() {
+    if (stationRepairPending || !GattServer::hasIdleRadioReservation() ||
+        GattServer::isOtaBusy() || isLocalRecoveryActive() ||
+        !stationCredentialsProvisioned() || !isStationAssociated()) return false;
+    const bool previousAutoReconnect = WiFi.getAutoReconnect();
+    if (!WiFi.setAutoReconnect(false)) {
+        WiFi.setAutoReconnect(previousAutoReconnect);
+        return false;
+    }
+    const uint32_t startedMs = millis();
+    const uint32_t generation = linkGeneration();
+    // timeout=0 is the pinned core's asynchronous path: a false return means
+    // esp_wifi_disconnect rejected the request, not an unobserved driver event.
+    wifiIntentionalDisconnectMarkedAtMs = startedMs;
+    wifiIntentionalDisconnectPending = true;
+    if (!WiFi.disconnect(false, false, 0)) {
+        clearIntentionalDisconnectMarker();
+        WiFi.setAutoReconnect(previousAutoReconnect);
+        DiagnosticsManager::noteAction("wifi_station_repair_disconnect_rejected");
+        return false;
+    }
+    stationRepairStartedMs = startedMs;
+    stationRepairLinkGeneration = generation;
+    stationRepairPending = true;
+    DiagnosticsManager::noteAction("wifi_station_repair_disconnect_requested");
+    return true;
+}
+
+bool WifiManager::finishStationRepair(bool restartInterface) {
+    if (!stationRepairPending) return false;
+    if (isLocalRecoveryActive() || GattServer::isOtaBusy()) {
+        cancelStationRepair(false);
+        return false;
+    }
+    if (!GattServer::hasIdleRadioReservation()) return false;
+    // Do not mistake a queued disconnect request for an observed departure.
+    // Driver generation also covers a short disconnect/reconnect missed by poll.
+    if (isStationAssociated() &&
+        linkGeneration() == stationRepairLinkGeneration) return false;
+    if (!stationCredentialsProvisioned()) {
+        cancelStationRepair(true);
+        return false;
+    }
+    stationRepairPending = false;
+    stationRepairStartedMs = 0;
+    stationRepairLinkGeneration = 0;
+    if (!restartInterface) {
+        if (!WiFi.setAutoReconnect(true)) return false;
+        const bool accepted = WiFi.reconnect();
+        DiagnosticsManager::noteAction(accepted ? "wifi_station_repair_reassociate_requested" :
+                                                  "wifi_station_repair_reassociate_rejected");
+        return accepted;
+    }
+
+    const String ssid = ConfigManager::getWifiSsid();
+    const String password = ConfigManager::getWifiPassword();
+    wifiIntentionalDisconnectMarkedAtMs = millis();
+    wifiIntentionalDisconnectPending = true;
+    const bool stopped = WiFi.mode(WIFI_OFF);
+    const bool started = stopped && WiFi.mode(WIFI_STA);
+    if (!started) {
+        if (!stopped) clearIntentionalDisconnectMarker();
+        // One bounded best-effort return to normal STA policy. Existing outage
+        // recovery remains responsible if even this driver mode request fails.
+        WiFi.mode(WIFI_STA);
+        WiFi.setAutoReconnect(true);
+        DiagnosticsManager::noteAction("wifi_station_repair_mode_rejected");
+        return false;
+    }
+    configureStationCompatibilityProfile();
+    if (!WiFi.setAutoReconnect(true)) return false;
+    const wl_status_t status = WiFi.begin(ssid.c_str(), password.c_str());
+    const bool accepted = status != WL_CONNECT_FAILED;
+    DiagnosticsManager::noteAction(accepted ? "wifi_station_repair_restart_requested" :
+                                              "wifi_station_repair_restart_rejected");
+    return accepted;
 }
 
 bool WifiManager::isConnected() {

@@ -8,6 +8,10 @@
 #include "MqttIngressWorker.h"
 #include "MqttDiagnosticScratch.h"
 #include "MqttConnectionPolicy.h"
+#include "MqttDnsPolicy.h"
+#include "NetworkRecoveryPolicy.h"
+#include "NetworkRecoveryController.h"
+#include "NetworkRecoveryJson.h"
 #include "MqttConnectionJson.h"
 #include "BleAdvertisementJson.h"
 #include "RearmHistoryJson.h"
@@ -69,12 +73,29 @@ uint32_t mqttConnectFailures = 0;
 int mqttLastError = 0;
 sgk::MqttReconnectPolicy mqttReconnect;
 sgk::MqttConnectionDiagnostics mqttConnection;
+sgk::NetworkRecoveryPolicy networkRecovery;
+sgk::NetworkRecoveryController networkRecoveryController;
 static_assert(sgk::MqttReconnectPolicy::kInitialMs == MQTT_RECONNECT_INITIAL_MS &&
               sgk::MqttReconnectPolicy::kMaximumMs == MQTT_RECONNECT_MAX_MS);
 
 void recordMqttLoss(sgk::MqttLossReason reason, int error, uint32_t now) {
     mqttConnection.record(reason, error, now, ESP.getFreeHeap(),
         ESP.getMaxAllocHeap(), WifiManager::linkGeneration());
+    using Failure = sgk::NetworkRecoveryPolicy::FailureKind;
+    if (reason == sgk::MqttLossReason::kOtaSuspend) {
+        networkRecovery.suspend(now);
+    } else if (reason == sgk::MqttLossReason::kWorkerStartFailed) {
+        networkRecovery.failure(Failure::kLocalResource, now, WifiManager::linkGeneration());
+    } else if (reason == sgk::MqttLossReason::kDnsFailed) {
+        networkRecovery.failure(Failure::kDns, now, WifiManager::linkGeneration());
+    } else if (reason == sgk::MqttLossReason::kMqttFailed && (error == 4 || error == 5)) {
+        networkRecovery.failure(Failure::kAuthorization, now, WifiManager::linkGeneration());
+    } else if (reason != sgk::MqttLossReason::kNone &&
+               reason != sgk::MqttLossReason::kWifiLost &&
+               reason != sgk::MqttLossReason::kStaleResult) {
+        networkRecovery.failure(Failure::kTransport, now, WifiManager::linkGeneration());
+    }
+    networkRecovery.observeConnected(now, false);
     if (reason == sgk::MqttLossReason::kOtaSuspend ||
         reason == sgk::MqttLossReason::kWifiLost ||
         reason == sgk::MqttLossReason::kStaleResult) {
@@ -110,13 +131,6 @@ String sensorTopic;
 String bootTopic;
 String configStateTopic;
 
-enum class MqttDnsState : uint8_t {
-    kIdle,
-    kPending,
-    kReady,
-    kFailed,
-};
-
 enum class MqttDnsPollResult : uint8_t {
     kPending,
     kReady,
@@ -124,10 +138,8 @@ enum class MqttDnsPollResult : uint8_t {
 };
 
 portMUX_TYPE mqttDnsMux = portMUX_INITIALIZER_UNLOCKED;
-MqttDnsState mqttDnsState = MqttDnsState::kIdle;
+sgk::MqttDnsPolicy mqttDnsPolicy(MQTT_DNS_RESOLVE_TIMEOUT_MS);
 ip_addr_t mqttDnsAddress{};
-uint32_t mqttDnsGeneration = 0;
-uint32_t mqttDnsStartedMs = 0;
 
 enum class MqttConnectOutcome : uint8_t {
     kSuccess,
@@ -136,6 +148,7 @@ enum class MqttConnectOutcome : uint8_t {
     kSubscribeFailed,
     kAvailabilityFailed,
     kStale,
+    kWorkerUnavailable,
 };
 
 struct MqttConnectRequest {
@@ -234,6 +247,7 @@ const char* connectOutcomeName(MqttConnectOutcome outcome) {
       case MqttConnectOutcome::kAvailabilityFailed:
         return "availability_failed";
       case MqttConnectOutcome::kStale: return "stale";
+      case MqttConnectOutcome::kWorkerUnavailable: return "worker_unavailable";
     }
     return "unknown";
 }
@@ -355,25 +369,17 @@ sgk::SignedCommandAccessTracker signedCommandAccessTracker{};
 
 void resetMqttDnsResolution() {
     portENTER_CRITICAL(&mqttDnsMux);
-    ++mqttDnsGeneration;
-    if (mqttDnsGeneration == 0) ++mqttDnsGeneration;
-    mqttDnsState = MqttDnsState::kIdle;
-    mqttDnsStartedMs = 0;
+    mqttDnsPolicy.reset();
     ip_addr_set_zero(&mqttDnsAddress);
     portEXIT_CRITICAL(&mqttDnsMux);
 }
 
 void completeMqttDnsResolution(uint32_t generation,
                                const ip_addr_t* address) {
+    const bool success = address != nullptr && !ip_addr_isany(address);
     portENTER_CRITICAL(&mqttDnsMux);
-    if (mqttDnsState == MqttDnsState::kPending &&
-        mqttDnsGeneration == generation) {
-        if (address == nullptr || ip_addr_isany(address)) {
-            mqttDnsState = MqttDnsState::kFailed;
-        } else {
-            ip_addr_copy(mqttDnsAddress, *address);
-            mqttDnsState = MqttDnsState::kReady;
-        }
+    if (mqttDnsPolicy.complete(generation, success, millis()) && success) {
+        ip_addr_copy(mqttDnsAddress, *address);
     }
     portEXIT_CRITICAL(&mqttDnsMux);
 }
@@ -386,52 +392,33 @@ void mqttDnsFound(const char*, const ip_addr_t* address, void* callbackArg) {
 
 MqttDnsPollResult pollMqttDns(IPAddress* resolvedAddress) {
     if (resolvedAddress == nullptr) return MqttDnsPollResult::kFailed;
-
     IPAddress literal;
     if (literal.fromString(MQTT_HOST)) {
         *resolvedAddress = literal;
         return MqttDnsPollResult::kReady;
     }
-
     const uint32_t now = millis();
-    MqttDnsState state;
-    uint32_t generation;
-    uint32_t startedMs;
     ip_addr_t address{};
+    uint32_t generation = 0;
     portENTER_CRITICAL(&mqttDnsMux);
-    state = mqttDnsState;
-    generation = mqttDnsGeneration;
-    startedMs = mqttDnsStartedMs;
-    if (state == MqttDnsState::kReady) {
+    const auto observed = mqttDnsPolicy.poll(now);
+    if (observed == sgk::MqttDnsPoll::kReady) {
         ip_addr_copy(address, mqttDnsAddress);
+    } else if (observed == sgk::MqttDnsPoll::kIdle) {
+        generation = mqttDnsPolicy.begin(now);
     }
     portEXIT_CRITICAL(&mqttDnsMux);
-
-    if (state == MqttDnsState::kReady) {
+    if (observed == sgk::MqttDnsPoll::kReady) {
         *resolvedAddress = IPAddress(&address);
         return MqttDnsPollResult::kReady;
     }
-    if (state == MqttDnsState::kFailed) {
-        resetMqttDnsResolution();
+    if (observed == sgk::MqttDnsPoll::kPending) return MqttDnsPollResult::kPending;
+    if (observed == sgk::MqttDnsPoll::kFailed ||
+        observed == sgk::MqttDnsPoll::kTimedOut) {
+        if (observed == sgk::MqttDnsPoll::kTimedOut)
+            DiagnosticsManager::noteAction("mqtt_dns_timeout");
         return MqttDnsPollResult::kFailed;
     }
-    if (state == MqttDnsState::kPending) {
-        if (now - startedMs < MQTT_DNS_RESOLVE_TIMEOUT_MS) {
-            return MqttDnsPollResult::kPending;
-        }
-        resetMqttDnsResolution();
-        DiagnosticsManager::noteAction("mqtt_dns_timeout");
-        return MqttDnsPollResult::kFailed;
-    }
-
-    portENTER_CRITICAL(&mqttDnsMux);
-    ++mqttDnsGeneration;
-    if (mqttDnsGeneration == 0) ++mqttDnsGeneration;
-    generation = mqttDnsGeneration;
-    mqttDnsStartedMs = now;
-    mqttDnsState = MqttDnsState::kPending;
-    portEXIT_CRITICAL(&mqttDnsMux);
-
     ip_addr_t immediate{};
     LOCK_TCPIP_CORE();
     const err_t result = dns_gethostbyname_addrtype(
@@ -439,16 +426,23 @@ MqttDnsPollResult pollMqttDns(IPAddress* resolvedAddress) {
         reinterpret_cast<void*>(static_cast<uintptr_t>(generation)),
         LWIP_DNS_ADDRTYPE_DEFAULT);
     UNLOCK_TCPIP_CORE();
-    if (result == ERR_OK) {
-        completeMqttDnsResolution(generation, &immediate);
-        *resolvedAddress = IPAddress(&immediate);
-        return MqttDnsPollResult::kReady;
-    }
     if (result == ERR_INPROGRESS) {
         DiagnosticsManager::noteAction("mqtt_dns_started");
         return MqttDnsPollResult::kPending;
     }
-    completeMqttDnsResolution(generation, nullptr);
+    completeMqttDnsResolution(generation, result == ERR_OK ? &immediate : nullptr);
+    // Consume a synchronous terminal result in this same attempt. The next
+    // retry must issue a real new query, not re-count an old immediate error.
+    portENTER_CRITICAL(&mqttDnsMux);
+    const auto terminal = mqttDnsPolicy.poll(millis());
+    if (terminal == sgk::MqttDnsPoll::kReady) ip_addr_copy(address, mqttDnsAddress);
+    portEXIT_CRITICAL(&mqttDnsMux);
+    if (terminal == sgk::MqttDnsPoll::kReady) {
+        *resolvedAddress = IPAddress(&address);
+        return MqttDnsPollResult::kReady;
+    }
+    if (terminal == sgk::MqttDnsPoll::kTimedOut)
+        DiagnosticsManager::noteAction("mqtt_dns_timeout");
     return MqttDnsPollResult::kFailed;
 }
 
@@ -983,6 +977,53 @@ bool MqttManager::connected = false;
 
 bool MqttManager::isConnected() { return connected; }
 
+
+struct MqttManager::NetworkRecoveryDriver {
+    uint32_t nowMillis() const { return millis(); }
+    bool externalRecoveryActive() const {
+        const auto status = OtaManager::getStatus();
+        const bool otaIdle = status == OtaManager::OtaStatus::IDLE ||
+            status == OtaManager::OtaStatus::UP_TO_DATE ||
+            status == OtaManager::OtaStatus::SUCCESS ||
+            status == OtaManager::OtaStatus::FAILED;
+        return otaTransportSuspended || !otaIdle || GattServer::isOtaBusy() ||
+            WifiManager::isAPMode() || WifiManager::isLocalRecoveryActive();
+    }
+    bool safeForRepair() const {
+        return !externalRecoveryActive() && DiagnosticsManager::loopWatchdogEnabled() &&
+            !MqttManager::transportWorkersActive() && !signedRestartPending &&
+            !pendingSignedAccessCommand.ready && !signedCommandAccessTracker.active() &&
+            OtaManager::isSafeForOta() && !GattServer::isConnected() &&
+            !GattServer::hasPendingIngress() && !GattServer::hasActiveOutput();
+    }
+    bool tryReserve() { return GattServer::tryReserveIdleRadio(); }
+    void release() { GattServer::releaseIdleRadio(); }
+    bool stationAssociated() const { return WifiManager::isStationAssociated(); }
+    uint32_t linkGeneration() const { return WifiManager::linkGeneration(); }
+    bool ownsStationRepair() const { return WifiManager::isStationRepairPending(); }
+    void invalidateTransport() {
+        // All socket owners have relinquished their lease before this point.
+        resetMqttDnsResolution();
+        MqttManager::wifiClient.stop();
+        MqttManager::connected = false;
+        wifiAvailableLastUpdate = false;
+    }
+    bool beginDisconnect() { return WifiManager::beginStationRepair(); }
+    bool finishReconnect(sgk::NetworkRecoveryPolicy::Action action) {
+        return WifiManager::finishStationRepair(
+            action == sgk::NetworkRecoveryPolicy::Action::kRestartStationInterface);
+    }
+    void cancelRepair(bool restoreAuto) { WifiManager::cancelStationRepair(restoreAuto); }
+};
+
+bool MqttManager::serviceNetworkRecovery() {
+    NetworkRecoveryDriver driver;
+    // Observe natural link recovery even when no new attempt has failed. This
+    // wrapper runs before update() can start another repair or return Wi-Fi-down.
+    networkRecovery.observeLinkGeneration(driver.linkGeneration());
+    return networkRecoveryController.service(millis(), networkRecovery, driver);
+}
+
 void MqttManager::invalidatePublishTransport(
     size_t payloadBytes, const char* diagnosticAction) {
     if (mqttPublishFailures != UINT32_MAX) ++mqttPublishFailures;
@@ -1121,9 +1162,13 @@ void MqttManager::serviceAccessCriticalIngress() {
     }
 }
 
-bool MqttManager::connectionAttemptInProgress() {
+bool MqttManager::transportWorkersActive() {
     return connectWorkerIsRunning() || telemetryWorker.ownsTransport() ||
            ingressWorker.ownsTransport();
+}
+
+bool MqttManager::connectionAttemptInProgress() {
+    return transportWorkersActive() || networkRecoveryController.active();
 }
 
 bool MqttManager::suspendForOta() {
@@ -1131,6 +1176,8 @@ bool MqttManager::suspendForOta() {
     if (otaTransportSuspended || connectionAttemptInProgress() ||
         signedRestartPending || !OtaManager::isSafeForOta()) return false;
     otaTransportSuspended = true;
+    networkRecovery.suspend(millis());
+    resetMqttDnsResolution();
     // A completed but unadopted worker result cannot resurrect the old socket.
     MqttConnectResult discarded{};
     takeConnectWorkerResult(&discarded);
@@ -1151,6 +1198,7 @@ bool MqttManager::suspendForOta() {
 void MqttManager::resumeAfterOta() {
     if (!otaTransportSuspended) return;
     otaTransportSuspended = false;
+    networkRecovery.resume(millis());
     mqttReconnect.immediate(millis());
     bootDiagnosticsPending = true;
     configStatePending = true;
@@ -1278,23 +1326,28 @@ void MqttManager::connectWorkerEntry(void* argument) {
     const esp_err_t watchdogAddResult = esp_task_wdt_add(nullptr);
     const bool watchdogEnrolled = watchdogAddResult == ESP_OK;
     noteWatchdogFailure(watchdogAddResult, "add");
-    auto feedWatchdog = [&]() {
-        if (watchdogEnrolled) {
-            noteWatchdogFailure(esp_task_wdt_reset(), "reset");
-        }
+    auto feedWatchdog = [&]() -> bool {
+        if (!watchdogEnrolled || result.watchdog_error != ESP_OK) return false;
+        const esp_err_t error = esp_task_wdt_reset();
+        noteWatchdogFailure(error, "reset");
+        return error == ESP_OK;
     };
 
     auto finish = [&](MqttConnectOutcome outcome, int mqttError) {
         result.outcome = outcome;
         result.mqtt_error = mqttError;
         result.duration_ms = millis() - startedMs;
-        if (outcome != MqttConnectOutcome::kSuccess) wifiClient.stop();
+        // A missing/lost watchdog may not perform further socket I/O,
+        // including cleanup. Return that socket to the monitored main owner.
+        if (outcome != MqttConnectOutcome::kSuccess &&
+            result.watchdog_error == ESP_OK) wifiClient.stop();
         if (watchdogEnrolled) {
             feedWatchdog();
-            // Relinquish the task watchdog before handing ownership of the
-            // transport/result back to loopTask. Every terminal path reaches
-            // this lambda, including stale and transport failures.
             noteWatchdogFailure(esp_task_wdt_delete(nullptr), "delete");
+        }
+        if (result.watchdog_error != ESP_OK) {
+            result.outcome = MqttConnectOutcome::kWorkerUnavailable;
+            result.mqtt_error = MQTT_CONNECT_FAILED;
         }
         completeConnectWorker(result);
     };
@@ -1302,6 +1355,12 @@ void MqttManager::connectWorkerEntry(void* argument) {
         return connectWorkerAttemptIsStale(
             request.request_id, request.wifi_link_generation);
     };
+
+    if (!watchdogEnrolled) {
+        finish(MqttConnectOutcome::kWorkerUnavailable, MQTT_CONNECT_FAILED);
+        vTaskDelete(nullptr);
+        return;
+    }
 
     if (stale()) {
         finish(MqttConnectOutcome::kStale, MQTT_CONNECT_FAILED);
@@ -1322,7 +1381,11 @@ void MqttManager::connectWorkerEntry(void* argument) {
         vTaskDelete(nullptr);
         return;
     }
-    feedWatchdog();
+    if (!feedWatchdog()) {
+        finish(MqttConnectOutcome::kWorkerUnavailable, MQTT_CONNECT_FAILED);
+        vTaskDelete(nullptr);
+        return;
+    }
     if (stale()) {
         finish(MqttConnectOutcome::kStale, MQTT_CONNECT_FAILED);
         vTaskDelete(nullptr);
@@ -1340,7 +1403,11 @@ void MqttManager::connectWorkerEntry(void* argument) {
         vTaskDelete(nullptr);
         return;
     }
-    feedWatchdog();
+    if (!feedWatchdog()) {
+        finish(MqttConnectOutcome::kWorkerUnavailable, MQTT_CONNECT_FAILED);
+        vTaskDelete(nullptr);
+        return;
+    }
     if (stale()) {
         finish(MqttConnectOutcome::kStale, MQTT_CONNECT_FAILED);
         vTaskDelete(nullptr);
@@ -1348,9 +1415,22 @@ void MqttManager::connectWorkerEntry(void* argument) {
     }
 
     const bool commandSubscribed = client.subscribe(commandTopic.c_str(), 1);
-    feedWatchdog();
+    if (!feedWatchdog()) {
+        finish(MqttConnectOutcome::kWorkerUnavailable, MQTT_CONNECT_FAILED);
+        vTaskDelete(nullptr);
+        return;
+    }
+    if (stale()) {
+        finish(MqttConnectOutcome::kStale, MQTT_CONNECT_FAILED);
+        vTaskDelete(nullptr);
+        return;
+    }
     const bool aclSubscribed = client.subscribe(aclTopic.c_str(), 1);
-    feedWatchdog();
+    if (!feedWatchdog()) {
+        finish(MqttConnectOutcome::kWorkerUnavailable, MQTT_CONNECT_FAILED);
+        vTaskDelete(nullptr);
+        return;
+    }
     if (!commandSubscribed || !aclSubscribed) {
         finish(stale() ? MqttConnectOutcome::kStale
                        : MqttConnectOutcome::kSubscribeFailed,
@@ -1381,7 +1461,11 @@ void MqttManager::connectWorkerEntry(void* argument) {
         vTaskDelete(nullptr);
         return;
     }
-    feedWatchdog();
+    if (!feedWatchdog()) {
+        finish(MqttConnectOutcome::kWorkerUnavailable, MQTT_CONNECT_FAILED);
+        vTaskDelete(nullptr);
+        return;
+    }
     if (stale()) {
         finish(MqttConnectOutcome::kStale, MQTT_CONNECT_FAILED);
         vTaskDelete(nullptr);
@@ -1515,6 +1599,8 @@ void MqttManager::init() {
     mqttLastError = 0;
     mqttReconnect = sgk::MqttReconnectPolicy{};
     mqttConnection = sgk::MqttConnectionDiagnostics{};
+    networkRecovery = sgk::NetworkRecoveryPolicy{};
+    networkRecoveryController = sgk::NetworkRecoveryController{};
     mqttLastConnectDurationMs = 0;
     mqttMaxConnectDurationMs = 0;
     mqttConnectWorkerWatchdogFailures = 0;
@@ -1876,6 +1962,7 @@ void MqttManager::update() {
             mqttLastError = 0;
             mqttReconnect.adopted(millis());
             mqttConnection.adopted(millis());
+            networkRecovery.adopted(millis());
             bootDiagnosticsPending = true;
             configStatePending = true;
             DiagnosticsManager::noteMqttConnected();
@@ -1907,6 +1994,7 @@ void MqttManager::update() {
               case MqttConnectOutcome::kMqttFailed: reason = sgk::MqttLossReason::kMqttFailed; break;
               case MqttConnectOutcome::kSubscribeFailed: reason = sgk::MqttLossReason::kSubscribeFailed; break;
               case MqttConnectOutcome::kAvailabilityFailed: reason = sgk::MqttLossReason::kAvailabilityFailed; break;
+              case MqttConnectOutcome::kWorkerUnavailable: reason = sgk::MqttLossReason::kWorkerStartFailed; break;
               default: break;
             }
             recordMqttLoss(reason, mqttLastError, millis());
@@ -1923,6 +2011,10 @@ void MqttManager::update() {
         // broker-side session from the old link cannot remain falsely online.
         wifiClient.stop();
     }
+
+    // A pending asynchronous repair owns the idle network phase, not the
+    // GATT mutex. It must run even while our requested STA disconnect is down.
+    if (serviceNetworkRecovery()) return;
 
     const bool wifiAvailable = WifiManager::isConnected();
     if (!wifiAvailable) {
@@ -1992,6 +2084,7 @@ void MqttManager::update() {
 
     connected = true;
     mqttReconnect.stable(millis());
+    networkRecovery.observeConnected(millis(), true);
     mqttConnection.loop(millis());
     accessActionStartedDuringLoop = false;
     if (ingressPacketReady) {
@@ -2770,6 +2863,8 @@ void MqttManager::publishTelemetry(uint16_t distance_mm,
     auto& captures = UltrasonicSensor::sessions;
     sgk::appendAccessEvidenceJson(doc, gattTelemetry.deferred,
         captures.oldestAgeMs(observed_now), captures.orphaned(), sizeof(pendingTelemetry));
+    sgk::appendNetworkRecoveryJson(doc, networkRecoveryController.diagnostics(),
+        networkRecoveryController.active(), sizeof(pendingTelemetry));
     const size_t telemetryBytes = measureJson(doc);
     mqttStatusPayloadBytes = static_cast<uint32_t>(
         std::min(telemetryBytes, static_cast<size_t>(UINT32_MAX)));

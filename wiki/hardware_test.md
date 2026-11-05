@@ -1462,3 +1462,19 @@ No Target command, reboot, OTA trigger, relay action or physical success is infe
 | Date | Result | Notes |
 |---|---|---|
 |2026-11-04|SIGNED MOBILE PUBLICATION PASS / INSTALL-PHYSICAL PENDING|Personal46901 via private SFTP; both HTTPS APKs, signer/Ed25519/source/hash and retained previous pair verified. Backend12/Target552 unchanged. No actuation trial.|
+
+## 2026-11-05 Target recovery software validation
+
+| Check | Result | Evidence boundary |
+|---|---|---|
+| Root host suite |512 run,14 explicit environment skips,0 failures | Actual worker/DNS/driver/Wi-Fi/GATT fixtures and policy/controller faults; no live failure injection |
+| Backend suite |450 run,13 opt-in skips,0 failures | Isolated DB/API fixtures |
+| Complete-dependency MQTT diagnostics |33 PASS | Actual unsigned projection/signed parser/storage and ArduinoJson budgets |
+| Flutter / Dart |136 PASS; format/analyzer PASS | WSL-native Docker Flutter3.44.8, no phone install |
+| Android JVM |167 XML tests,0 failure/error/skip; Gradle SUCCESS | Task up-to-date; unchanged native code, no OEM/RF acceptance |
+| Default / personal-enabled C6 |Both PASS | Example-only ignored secrets, no upload; effective personal GATT profile |
+| OTA contract |PASS | Existing recovery/dual-slot/release pins retained |
+| Independent source review |No remaining confirmed blocker | Old-link qualification race fixed RED-to-GREEN; physical admission/RF not measured |
+| Hosted release / installed health / physical entry |Pending | Installed552 remains baseline; no unattended door command |
+
+Details: [Target network recovery](target_network_recovery_2026_11_05.md).

@@ -162,6 +162,74 @@ class MqttWireTest(unittest.TestCase):
             self.assertIsNone(main._parse_authenticated_target_status(TARGET, wire.encode()))
 
 
+    def test_station_repair_actions_allow_only_known_tokens_and_rtc_truncations(self):
+        actions = ("wifi_station_repair_lease_expired",
+                   "wifi_station_repair_disconnect_rejected",
+                   "wifi_station_repair_disconnect_requested",
+                   "wifi_station_repair_reassociate_requested",
+                   "wifi_station_repair_reassociate_rejected",
+                   "wifi_station_repair_mode_rejected",
+                   "wifi_station_repair_restart_requested",
+                   "wifi_station_repair_restart_rejected")
+        for action in actions:
+            for token in (action, action[:31]):
+                self.assertEqual({"previous_action": token},
+                                 advisory_projection({"previous_action": token}))
+        for bad in ("wifi_station_repair_private_password", "https://private"):
+            self.assertEqual({}, advisory_projection({"previous_action": bad}))
+
+    def test_network_recovery_projection_is_closed_bounded_optional_and_unsigned(self):
+        counters = ("started", "completed", "rejected", "timeouts", "cancelled",
+                    "deferred", "reserve_failures", "commit_failures")
+        value = dict(schema=1, active=True, **{key: U32 for key in counters})
+        projected = advisory_projection({"network_recovery": {
+            **value, "private_key": "discard", "access_ready": True}})
+        self.assertEqual({"network_recovery": value}, projected)
+        self.assertEqual(projected, advisory_projection(projected))
+        for key in value:
+            missing = dict(value)
+            del missing[key]
+            self.assertEqual({}, advisory_projection({"network_recovery": missing}), key)
+        for key in counters:
+            for bad in (-1, U32 + 1, True, 1.0, "1", None):
+                with self.subTest(key=key, bad=bad):
+                    self.assertEqual({"free_heap": 60000}, advisory_projection({
+                        "network_recovery": {**value, key: bad}, "free_heap": 60000}))
+        for key, bad in (("schema", True), ("schema", 1.0), ("schema", 2),
+                         ("active", 1), ("active", "false"), ("active", None)):
+            self.assertEqual({}, advisory_projection({"network_recovery": {**value, key: bad}}))
+        self.assertEqual({}, advisory_projection({}))
+
+    def test_network_recovery_never_changes_signed_core_or_storage_authority(self):
+        value = dict(schema=1, active=False, started=1, completed=1, rejected=0,
+                     timeouts=0, cancelled=0, deferred=2, reserve_failures=0,
+                     commit_failures=0)
+        doc = signed_document()
+        with patch.object(main, "_configured_target_door_id", return_value="a" * 32), \
+                patch.object(main, "ACCESS_EVENT_REF_KEYS", {"a1": KEY}):
+            original = main._parse_authenticated_target_status(TARGET, json.dumps(doc).encode())
+            doc["network_recovery"] = value
+            parsed = main._parse_authenticated_target_status(TARGET, json.dumps(doc).encode())
+            self.assertIsNotNone(parsed)
+            self.assertEqual(value, parsed.get("advisory_diagnostics", {}).get("network_recovery"))
+            self.assertEqual({key: original[key] for key in CORE_FIELDS},
+                             {key: parsed[key] for key in CORE_FIELDS})
+            self.assertEqual(original["integrity_tag"], parsed["integrity_tag"])
+            cur = MagicMock()
+            cur.rowcount = 1
+            record_verified_health(cur, parsed)
+            _, args = cur.execute.call_args_list[0].args
+            self.assertNotIn("network_recovery", json.loads(args[7]))
+            self.assertEqual(value, json.loads(args[8])["network_recovery"])
+            doc["network_recovery"]["started"] = True
+            invalid = main._parse_authenticated_target_status(TARGET, json.dumps(doc).encode())
+            self.assertIsNotNone(invalid)
+            self.assertNotIn("network_recovery", invalid.get("advisory_diagnostics", {}))
+            self.assertEqual(original["integrity_tag"], invalid["integrity_tag"])
+            doc["state"] = "ARMED"
+            self.assertIsNone(main._parse_authenticated_target_status(TARGET, json.dumps(doc).encode()))
+
+
 class HealthSqliteCursor:
     """Execute the production INSERT predicate; adapt dialect and test time only.
 

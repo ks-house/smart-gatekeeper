@@ -48,6 +48,9 @@ sgk::AccessEventSequence access_event_sequence;
 bool advertising_restart_requested_{false};
 bool advertising_expected_{false};
 bool advertising_ota_busy_{false};
+// Independent from actual OTA ownership: releasing network admission must not
+// clear an OTA owner that appeared while a bounded radio mutation was running.
+bool radio_reserved_{false};
 int advertising_tx_power_dbm_ = 9;
 uint32_t advertising_restart_attempts_{0};
 uint32_t advertising_restart_successes_{0};
@@ -907,16 +910,20 @@ BLECharacteristic* characteristicFor(sgk::MessageType type) {
 }  // namespace
 
 void GattServer::init() {
-  advertising_restart_requested_ = false;
-  advertising_expected_ = false;
-  advertising_ota_busy_ = false;
-  advertising_restart_attempts_ = 0;
-  advertising_restart_successes_ = 0;
-  advertising_restart_failures_ = 0;
-  advertising_watchdog_recoveries_ = 0;
-  presence_advertisement_ = {};
-  advertisement_diagnostics_ = {};
-  advertising_last_restart_reason_ = "NONE";
+  {
+    std::lock_guard<std::recursive_mutex> lock(core_mutex);
+    radio_reserved_ = false;
+    advertising_restart_requested_ = false;
+    advertising_expected_ = false;
+    advertising_ota_busy_ = false;
+    advertising_restart_attempts_ = 0;
+    advertising_restart_successes_ = 0;
+    advertising_restart_failures_ = 0;
+    advertising_watchdog_recoveries_ = 0;
+    presence_advertisement_ = {};
+    advertisement_diagnostics_ = {};
+    advertising_last_restart_reason_ = "NONE";
+  }
 #if ENABLE_HARDWARELESS_RC
   deferred_event_sink.clear();
   production_lifecycle_sink.clear();
@@ -1110,6 +1117,40 @@ bool GattServer::hasPendingIngress() {
 #endif
 }
 
+bool GattServer::tryReserveIdleRadio() {
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
+  if (advertising_ota_busy_ || radio_reserved_ ||
+      controllerHasActiveConnection()) return false;
+#if ENABLE_HARDWARELESS_RC
+  if (fast_start_requested_ || adapter_state.hasPendingWrite() ||
+      in_flight_valid_ || adapter_state.outputActive() ||
+      adapter_state.confirmationPending() ||
+      (core != nullptr && (core->hasOutput() ||
+                           core->state() != sgk::SessionState::kIdle))) {
+    return false;
+  }
+#endif
+  radio_reserved_ = true;
+#if ENABLE_HARDWARELESS_RC
+  if (core != nullptr) core->setOtaBusy(true, millis());
+#endif
+  return true;
+}
+
+void GattServer::releaseIdleRadio() {
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
+  if (!radio_reserved_) return;
+  radio_reserved_ = false;
+#if ENABLE_HARDWARELESS_RC
+  if (core != nullptr) core->setOtaBusy(advertising_ota_busy_, millis());
+#endif
+}
+
+bool GattServer::hasIdleRadioReservation() {
+  std::lock_guard<std::recursive_mutex> lock(core_mutex);
+  return radio_reserved_;
+}
+
 uint32_t GattServer::getActiveConnections() {
 #if ENABLE_HARDWARELESS_RC
   if (core == nullptr) return 0;
@@ -1139,7 +1180,7 @@ void GattServer::setOtaBusy(bool busy) {
     adapter_state.abortOutput();
     adapter_state.clearWrites();
   }
-  core->setOtaBusy(busy, millis());
+  core->setOtaBusy(busy || radio_reserved_, millis());
   core_mutex.unlock();
   drainOutputs();
 #else
@@ -1405,6 +1446,12 @@ bool GattServer::handleConnect(uint16_t connection_id) {
 #if ENABLE_HARDWARELESS_RC
   if (core == nullptr) return false;
   core_mutex.lock();
+  // ProtocolCore permits OTA-busy links to receive BUSY results. A network
+  // radio reservation instead forbids accepting a new link until release.
+  if (radio_reserved_) {
+    core_mutex.unlock();
+    return false;
+  }
   sgk::ConnectionToken owner;
   const bool core_accepted = core->connect(connection_id, millis(), &owner);
   const bool accepted =

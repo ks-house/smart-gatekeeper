@@ -52,6 +52,8 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
   MobileIdentityStatus _identityStatus = MobileIdentityStatus.unavailable;
   bool _identityStatusLoaded = false;
   int _identityRefreshGeneration = 0;
+  Timer? _targetAvailabilityExpiryTimer;
+  bool _targetAvailabilityExpired = false;
   NativeGattWorkerHealth? _health;
   UpdateExperience? _updateExperience;
   List<MobileActivityItem> _activity = const [];
@@ -116,6 +118,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
     _updates.downloadProgress.removeListener(_refreshUpdateProgress);
     _healthTimer?.cancel();
     _identityTimer?.cancel();
+    _targetAvailabilityExpiryTimer?.cancel();
     _accessSessionTimer?.cancel();
     _accessSessionExpiryTimer?.cancel();
     _fieldMarkerExpiryTimer?.cancel();
@@ -329,6 +332,7 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
     final generation = ++_identityRefreshGeneration;
     final status = await _identity.status();
     if (!mounted || generation != _identityRefreshGeneration) return;
+    _trackTargetAvailability(status);
     setState(() {
       _identityStatus = status;
       _identityStatusLoaded = true;
@@ -336,6 +340,25 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
     // History is supplementary: it must not hold status or manual recovery
     // behind an unrelated network request.
     unawaited(_refreshIdentityActivity(generation));
+  }
+
+  void _trackTargetAvailability(MobileIdentityStatus status) {
+    _targetAvailabilityExpiryTimer?.cancel();
+    _targetAvailabilityExpired = false;
+    final availability = status.targetAvailability;
+    if (availability?.state == 'fresh') {
+      // Use elapsed Timer time, never the phone's wall clock, to retire a
+      // cached fresh projection even while the next status request is pending.
+      final remaining =
+          availability!.maxAgeMs! - availability.observedAgeMs! + 1;
+      _targetAvailabilityExpiryTimer = Timer(
+        Duration(milliseconds: remaining),
+        () {
+          if (!mounted || !identical(_identityStatus, status)) return;
+          setState(() => _targetAvailabilityExpired = true);
+        },
+      );
+    }
   }
 
   Future<void> _refreshIdentityActivity(int generation) async {
@@ -579,10 +602,30 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
   BackgroundAccessStatus get _backgroundStatus =>
       _health?.backgroundAccessStatus ?? BackgroundAccessStatus.checking;
 
+  String? get _targetAvailabilityState => _targetAvailabilityExpired
+      ? 'stale'
+      : _identityStatus.targetAvailability?.state;
+
+  bool get _targetAvailabilityNeedsAttention =>
+      _identityStatus.enrollmentState == EnrollmentState.approved &&
+      const ['stale', 'unknown'].contains(_targetAvailabilityState);
+
+  String get _lastTargetCommunication {
+    final last = _identityStatus.targetAvailability?.lastVerifiedAtEpochMs;
+    return last == null
+        ? ''
+        : '\n마지막 검증 통신 ${_formatTime(DateTime.fromMillisecondsSinceEpoch(last))}';
+  }
+
   String _readinessTitle(AppLocalizations strings) {
     if (!_identityStatusLoaded) return '상태 확인 중';
     if (_identityStatus.nextAction == 'status_unavailable') {
       return strings.statusCheckNeeded;
+    }
+    if (_targetAvailabilityNeedsAttention) {
+      return _targetAvailabilityState == 'stale'
+          ? '현관 장치 통신 확인 필요'
+          : '현관 장치 상태 확인 불가';
     }
     if (_identityStatus.accessReady) {
       return switch (_backgroundStatus) {
@@ -611,6 +654,11 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
     if (_identityStatus.nextAction == 'status_unavailable') {
       return strings.backendStatusUnavailableDetail;
     }
+    if (_targetAvailabilityNeedsAttention) {
+      return _targetAvailabilityState == 'stale'
+          ? '최근 장치 응답이 확인되지 않습니다. 자동 복구 완료도 아직 확인되지 않았습니다.$_lastTargetCommunication'
+          : '현재 장치 통신 상태를 확인할 수 없습니다.$_lastTargetCommunication';
+    }
     if (_identityStatus.accessReady) {
       switch (_backgroundStatus) {
         case BackgroundAccessStatus.ready:
@@ -631,7 +679,9 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
       'request_registration' => strings.requestRegistrationDetail,
       'wait_for_approval' => strings.waitForApprovalDetail,
       'enroll_credential' => strings.enrollCredentialDetail,
-      'wait_for_acl' => strings.waitForAclDetail,
+      'wait_for_acl' => _targetAvailabilityState == 'fresh'
+          ? '장치 통신은 확인됐습니다. 출입 권한 적용 확인을 기다리고 있습니다.'
+          : strings.waitForAclDetail,
       _ => strings.advancedDiagnosticsDetail,
     };
   }
@@ -766,9 +816,13 @@ class _SmartKeyHomeScreenState extends State<SmartKeyHomeScreen>
     final strings = AppLocalizations.of(context);
     final eligible = _identityStatus.accessReady &&
         _identityStatus.nextAction != 'status_unavailable';
-    final ready = eligible && _backgroundStatus == BackgroundAccessStatus.ready;
+    final ready = eligible &&
+        _backgroundStatus == BackgroundAccessStatus.ready &&
+        !_targetAvailabilityNeedsAttention;
     final informational = !_identityStatusLoaded ||
-        (eligible && !_backgroundStatus.needsAttention);
+        (eligible &&
+            !_backgroundStatus.needsAttention &&
+            !_targetAvailabilityNeedsAttention);
     return RefreshIndicator(
       onRefresh: _loadAll,
       child: ListView(

@@ -1,8 +1,10 @@
 #include "MqttConnectionJson.h"
+#include "NetworkRecoveryJson.h"
 #include "BleAdvertisementJson.h"
 #include "RearmHistoryJson.h"
 #include "AccessEvidenceJson.h"
 #include <cassert>
+#include <cstdio>
 #include <string>
 
 int main() {
@@ -118,4 +120,58 @@ int main() {
   assert(!small.overflowed() && !small.containsKey("access_evidence"));
   assert(!sgk::appendAccessEvidenceJson(short_wire, evidence, 0, 0, 480));
   assert(!short_wire.overflowed() && !short_wire.containsKey("access_evidence"));
+  // Eight saturated counters have a fixed slot/wire budget. Insufficient pool
+  // or wire room must leave existing signed status and optional groups intact.
+  sgk::NetworkRecoveryController::Diagnostics recovery;
+  recovery.started = recovery.completed = recovery.rejected = recovery.timeouts =
+      recovery.cancelled = recovery.deferred = recovery.reserve_failures =
+      recovery.commit_failures = UINT32_MAX;
+  StaticJsonDocument<JSON_OBJECT_SIZE(12)> recovery_doc;
+  recovery_doc["signed_state"] = "unchanged";
+  const auto recovery_before = measureJson(recovery_doc);
+  const auto recovery_pool = recovery_doc.memoryUsage();
+  assert(sgk::appendNetworkRecoveryJson(recovery_doc, recovery, false, 7936));
+  assert(!recovery_doc.overflowed());
+  assert(recovery_doc.memoryUsage() - recovery_pool == JSON_OBJECT_SIZE(11));
+  assert(measureJson(recovery_doc) - recovery_before == 239);
+  std::printf("network recovery JSON max_growth=239 pool_growth=%zu\n",
+              recovery_doc.memoryUsage() - recovery_pool);
+  assert(recovery_doc["network_recovery"].size() == 10);
+  assert(recovery_doc["network_recovery"]["schema"] == 1);
+  assert(recovery_doc["network_recovery"]["active"] == false);
+  assert(recovery_doc["network_recovery"]["commit_failures"].as<uint32_t>() == UINT32_MAX);
+  assert(recovery_doc["signed_state"] == "unchanged");
+  std::string recovery_wire;
+  serializeJson(recovery_doc, recovery_wire);
+  recovery = {};
+  std::string recovery_after;
+  serializeJson(recovery_doc, recovery_after);
+  assert(recovery_wire == recovery_after);  // JSON owns numeric values.
+  StaticJsonDocument<JSON_OBJECT_SIZE(11)> recovery_small;
+  recovery_small["signed_state"] = "unchanged";
+  const auto small_pool = recovery_small.memoryUsage();
+  std::string small_before, small_after;
+  serializeJson(recovery_small, small_before);
+  assert(!sgk::appendNetworkRecoveryJson(recovery_small, recovery, true, 7936));
+  serializeJson(recovery_small, small_after);
+  assert(small_before == small_after && recovery_small.memoryUsage() == small_pool);
+  assert(!recovery_small.overflowed());
+  StaticJsonDocument<2048> recovery_short_wire;
+  recovery_short_wire["signed_state"] = "unchanged";
+  const size_t base_wire = measureJson(recovery_short_wire);
+  const size_t base_pool = recovery_short_wire.memoryUsage();
+  std::string short_before, short_after;
+  serializeJson(recovery_short_wire, short_before);
+  assert(!sgk::appendNetworkRecoveryJson(recovery_short_wire, recovery, true, base_wire + 256));
+  serializeJson(recovery_short_wire, short_after);
+  assert(short_before == short_after && recovery_short_wire.memoryUsage() == base_pool);
+  assert(!recovery_short_wire.overflowed());
+  assert(sgk::appendNetworkRecoveryJson(recovery_short_wire, recovery, true, base_wire + 257));
+  assert(recovery_short_wire["network_recovery"]["active"] == true);
+  StaticJsonDocument<0> overflow;
+  overflow["cannot_fit"] = 1;
+  assert(overflow.overflowed());
+  assert(!sgk::appendNetworkRecoveryJson(overflow, recovery, false, 7936));
+  assert(!overflow.containsKey("network_recovery"));
+
 }

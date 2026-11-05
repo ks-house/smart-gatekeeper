@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import ipaddress
 import logging
+import math
 import queue
 import re
 import threading
@@ -3087,6 +3088,25 @@ class _TargetGateStateRegistry:
                 return None
             return dict(value[0])
 
+    def availability_projection(self, target_id: str, max_age_seconds: float) -> dict:
+        """Read the latest accepted observation, including its monotonic age."""
+        checked = int(time.time() * 1000)
+        maximum = int(max_age_seconds * 1000)
+        unknown = dict(state="unknown", checked_at_epoch_ms=checked,
+                       last_verified_at_epoch_ms=None, observed_age_ms=None,
+                       max_age_ms=maximum)
+        with self._lock:
+            value = self._states.get(target_id)
+            if value is None:
+                return unknown
+            timestamp = value[0].get("_server_observed_epoch_ms")
+            elapsed = time.monotonic() - value[1]
+            if type(timestamp) is not int or not 0 <= timestamp <= checked or elapsed < 0:
+                return unknown
+            age = math.ceil(elapsed * 1000)
+            return dict(unknown, state="fresh" if age <= maximum else "stale",
+                        last_verified_at_epoch_ms=timestamp, observed_age_ms=age)
+
     def live_snapshot(
         self,
         target_id: str,
@@ -4171,6 +4191,58 @@ def _personal_diagnostic_target_baseline(tenant_id: str, credential_id: str) -> 
             conn.close()
 
 
+
+def _personal_target_availability(tenant_id: str, credential_id: str) -> dict | None:
+    """Scoped, read-only explanation; only the verified registry proves freshness."""
+    maximum = int(HA_BRIDGE_AVAILABILITY_EXPIRY_SECONDS * 1000)
+    checked = int(time.time() * 1000)
+    unknown = dict(state="unknown", checked_at_epoch_ms=checked,
+                   last_verified_at_epoch_ms=None, observed_age_ms=None,
+                   max_age_ms=maximum)
+    owner = globals().get("_acl_target_credentials", {}).get(COMMAND_TARGET_ID)
+    if (not isinstance(owner, dict) or owner.get("tenant_id") != tenant_id
+            or tenant_id != ACL_PERSONAL_TENANT_ID
+            or owner.get("door_id") != ACL_PERSONAL_DOOR_ID
+            or _configured_target_door_id(COMMAND_TARGET_ID) != ACL_PERSONAL_DOOR_ID):
+        return None
+    conn = None
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT c.credential_id FROM credentials c "
+                "JOIN acl_tenants t ON t.tenant_id=c.tenant_id AND t.status='ACTIVE' "
+                "JOIN credential_door_grants g ON g.tenant_id=c.tenant_id AND g.credential_id=c.credential_id "
+                "WHERE c.tenant_id=%s AND c.credential_id=%s AND c.status='ACTIVE' "
+                "AND (c.expires_at IS NULL OR c.expires_at>%s) "
+                "AND g.door_id=%s AND g.permissions=1 AND g.revoked_at IS NULL LIMIT 1",
+                (tenant_id, credential_id, checked // 1000, ACL_PERSONAL_DOOR_ID))
+            if cur.fetchone() is None:
+                return None
+            current = _target_gate_states.availability_projection(
+                COMMAND_TARGET_ID, HA_BRIDGE_AVAILABILITY_EXPIRY_SECONDS)
+            if current["state"] != "unknown":
+                return current
+            # Persisted evidence can explain a gap after registry clear/restart.
+            # It can never establish live status in the new transport generation.
+            cur.execute("SELECT received_at FROM target_access_status_highwater WHERE target_id=%s",
+                        (COMMAND_TARGET_ID,))
+            row = cur.fetchone()
+            timestamp = row.get("received_at") if row else None
+            if isinstance(timestamp, datetime):
+                if timestamp.tzinfo is None:
+                    timestamp = timestamp.replace(tzinfo=timezone.utc)
+                epoch_ms = int(timestamp.timestamp() * 1000)
+                if 0 <= epoch_ms <= checked:
+                    unknown["last_verified_at_epoch_ms"] = epoch_ms
+        return unknown
+    except Exception:
+        return unknown
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def _store_mobile_diagnostics(
     tenant_id: str, credential_id: str, bundle: dict
 ) -> dict[str, object]:
@@ -4594,6 +4666,7 @@ if ACL_MANAGEMENT_ENABLED:
                         personal_access_session=_personal_access_session,
                         personal_diagnostics_ingest=_store_mobile_diagnostics,
                         personal_diagnostics_baseline=_personal_diagnostic_target_baseline,
+                        personal_target_availability=_personal_target_availability,
                     ),
                 )
             )

@@ -15,6 +15,58 @@ class DiagnosticUploadResult {
   bool get accepted => code == 'ACCEPTED';
 }
 
+/// Advisory communication evidence, separate from credential/ACL authorization.
+class MobileTargetAvailability {
+  const MobileTargetAvailability({
+    required this.state,
+    this.checkedAtEpochMs,
+    this.lastVerifiedAtEpochMs,
+    this.observedAgeMs,
+    this.maxAgeMs,
+  });
+
+  final String state;
+  final int? checkedAtEpochMs;
+  final int? lastVerifiedAtEpochMs;
+  final int? observedAgeMs;
+  final int? maxAgeMs;
+
+  static const unknown = MobileTargetAvailability(state: 'unknown');
+
+  static MobileTargetAvailability fromJson(Object? raw) {
+    if (raw is! Map) return unknown;
+    final state = raw['state'];
+    final checked = raw['checked_at_epoch_ms'];
+    final last = raw['last_verified_at_epoch_ms'];
+    final age = raw['observed_age_ms'];
+    final maximum = raw['max_age_ms'];
+    if (!const ['fresh', 'stale', 'unknown'].contains(state) ||
+        checked is! int ||
+        checked < 0 ||
+        maximum is! int ||
+        maximum < 1 ||
+        maximum > 300000 ||
+        (last != null && (last is! int || last < 0 || last > checked)) ||
+        (age != null && (age is! int || age < 0))) {
+      return unknown;
+    }
+    if (state == 'unknown') {
+      if (age != null) return unknown;
+    } else if (last == null ||
+        age == null ||
+        (state == 'fresh') != ((age as int) <= maximum)) {
+      return unknown;
+    }
+    return MobileTargetAvailability(
+      state: state as String,
+      checkedAtEpochMs: checked,
+      lastVerifiedAtEpochMs: last as int?,
+      observedAgeMs: age as int?,
+      maxAgeMs: maximum,
+    );
+  }
+}
+
 class MobileIdentityStatus {
   const MobileIdentityStatus({
     required this.enrollmentState,
@@ -28,6 +80,7 @@ class MobileIdentityStatus {
     this.aclVersion,
     this.expiresAtEpoch,
     this.mobileRole = 'USER',
+    this.targetAvailability,
   });
 
   final EnrollmentState enrollmentState;
@@ -41,6 +94,7 @@ class MobileIdentityStatus {
   final int? aclVersion;
   final int? expiresAtEpoch;
   final String mobileRole;
+  final MobileTargetAvailability? targetAvailability;
 
   bool get isMobileAdmin => mobileRole == 'TENANT_ADMIN';
 
@@ -56,6 +110,9 @@ class MobileIdentityStatus {
         value['enrollment_state']?.toString(),
         aclExpiresAtEpoch: (value['credential_expires_at'] as num?)?.toInt(),
       ),
+      targetAvailability: value.containsKey('target_availability')
+          ? MobileTargetAvailability.fromJson(value['target_availability'])
+          : null,
       accessReady: value['access_ready'] == true,
       nextAction: value['next_action']?.toString() ?? 'retry',
       doorCount: (value['door_count'] as num?)?.toInt() ?? 0,

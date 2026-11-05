@@ -30,6 +30,8 @@ private:
                                    uint32_t wifiLinkGeneration);
     static void connectWorkerEntry(void* argument);
     static void pollTelemetryWorker();
+    struct NetworkRecoveryDriver;
+    static bool serviceNetworkRecovery();
     static void pollIngressWorker();
     static bool dispatchCriticalManual(const sgk::SignedCommandEnvelope& envelope);
     static void invalidatePublishTransport(size_t payloadBytes,
@@ -50,6 +52,8 @@ public:
     // automatic-to-manual handoff run on main after exclusive socket adoption.
     static void serviceAccessCriticalIngress();
     static bool connectionAttemptInProgress();
+    // Actual socket owners only; excludes the main-task station-repair phase.
+    static bool transportWorkersActive();
     // Main-task-only safe OTA lease. Releases the established TLS allocation,
     // not merely concurrent handshakes; all exits must resume normal reconnect.
     static bool suspendForOta();

@@ -5,11 +5,12 @@ from __future__ import annotations
 import hashlib
 import json
 import secrets
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Literal, Optional
 
 from fastapi import APIRouter, Header, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 try:
     from .acl_management import AclManagementService, CredentialConflictError
@@ -39,6 +40,31 @@ class AclApiConfig:
         Callable[[str, str, dict[str, Any]], dict[str, Any]]
     ] = None
     personal_diagnostics_baseline: Optional[Callable[[str, str], dict[str, Any]]] = None
+    personal_target_availability: Optional[Callable[[str, str], Optional[dict[str, Any]]]] = None
+
+
+class MobileTargetAvailability(BaseModel):
+    """Advisory availability only; it never changes credential or ACL authority."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    state: Literal["fresh", "stale", "unknown"]
+    checked_at_epoch_ms: int = Field(ge=0)
+    last_verified_at_epoch_ms: Optional[int] = Field(default=None, ge=0)
+    observed_age_ms: Optional[int] = Field(default=None, ge=0)
+    max_age_ms: int = Field(ge=1, le=300000)
+
+    @model_validator(mode="after")
+    def coherent_observation(self) -> "MobileTargetAvailability":
+        if (self.last_verified_at_epoch_ms is not None
+                and self.last_verified_at_epoch_ms > self.checked_at_epoch_ms):
+            raise ValueError("future observation")
+        if self.state == "unknown":
+            if self.observed_age_ms is not None:
+                raise ValueError("unknown observation age")
+        elif (self.last_verified_at_epoch_ms is None or self.observed_age_ms is None
+              or (self.state == "fresh") != (self.observed_age_ms <= self.max_age_ms)):
+            raise ValueError("inconsistent observation freshness")
+        return self
 
 
 class TenantRequest(BaseModel):
@@ -360,7 +386,7 @@ def create_acl_router(
                 status_code=422,
                 detail="credential identity fields must be provided together",
             )
-        return _invoke(
+        response = _invoke(
             service.personal_mobile_status,
             config.personal_tenant_id,
             config.personal_door_id,
@@ -368,6 +394,20 @@ def create_acl_router(
             request.credential_id,
             request.public_key_sec1,
         )
+        if (config.personal_target_availability is not None
+                and request.credential_id is not None
+                and response.get("enrollment_state") == "approved"
+                and response.get("selected_door") == "default"):
+            try:
+                availability = MobileTargetAvailability.model_validate(
+                    config.personal_target_availability(
+                        config.personal_tenant_id, request.credential_id))
+            except Exception:
+                availability = MobileTargetAvailability(
+                    state="unknown", checked_at_epoch_ms=int(time.time() * 1000),
+                    max_age_ms=90250)
+            response = {**response, "target_availability": availability.model_dump()}
+        return response
 
     @router.post("/api/v1/acl/personal/activity")
     def personal_activity(

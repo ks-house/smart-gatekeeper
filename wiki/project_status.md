@@ -18,6 +18,14 @@ applies_to:
 
 # 현재 프로젝트 상태
 
+## 2026-11-05 Target recurrence hardening: locally validated, delivery pending
+
+[Recovery implementation](target_network_recovery_2026_11_05.md) adds bounded same-link DNS/MQTT escalation, asynchronous STA repair with atomic access/OTA exclusion, watchdog I/O handoff and optional unsigned diagnostics. Scoped mobile availability separates stale/unknown communication from ACL wait without changing authorization. Root512/14 environment skips, Backend450/13 opt-in skips, complete-dependency diagnostics33, Flutter136, Android167 XML/zero failures-errors-skips (task up-to-date), two C6 profiles, analyzer/format and OTA contract PASS. Independent review fixed old-link qualification across natural reconnection; no confirmed blocker remains. Source publication, signed delivery, installed health and physical acceptance are still separate pending gates. Native WSL Docker Engine is working; NAS Docker/installed552 are separate systems.
+
+## 2026-11-05 ACL wait incident: readiness restored, root trigger pending
+
+[Incident analysis](acl_wait_incident_2026_11_05.md): Target signed status gap20:17–21:40, sameboot912 recovery, DNS failure evidence and9846 APPLIED; user confirms Smart Key ready after refresh. No device/service control or code deployment was performed. Initial network trigger, long recovery prevention and physical passage remain unverified.
+
 ## 2026-11-04 mobile background recovery: signed46901 published
 
 [Implementation and verification](mobile_background_recovery_2026_11_04.md) covers native lifecycle registration, bounded fresh-RF wait, safe pre-proof recovery, cancellation and accurate Home checking. PR475 merged5a04d99 and main41835142803 successfully published signed personal mobile46901. Both public APKs/manifests, signer/source and Ed25519 signatures independently verify; prior valid pairs are retained. Phone installation/physical/OEM acceptance remains pending. Backend and Target552 are unchanged.
