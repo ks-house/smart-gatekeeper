@@ -8176,3 +8176,9 @@
 - Independent complete primary/fallback HTTPS downloads and both manifests match signed CI bytes/source/package/version. APK certificate pin and both Ed25519 signatures verify with the source-pinned public-key hash. Receipt confirms atomic APK/metadata swaps and retained previous valid46101 pairs.
 -22:41:55 KST read-only Backend64b5c2f/readiness12/fresh collectors and Target boot912/552/VALID/IDLE/relayOFF remain; Target public manifest is unchanged. Latest observed phone is still46101(capture22:41:29,receipt22:41:30), owner attribution unknown. New phone installation and physical/OEM entry are not claimed.
 - Mobile private publication closes only that460 sub-gate; external SSH/refirewall and backup461 are untouched. No door/reboot/TargetOTA/phone setting command. Update owning wiki/plan and keep raw diagnostic JSON outside Git.
+
+## [2026-11-05] fix | Review exact certifi security input admission
+
+- PR478 frozen570831b fixes existing PYSEC-2026-4320 in locked certifi2026.7.22. Candidate2026.10.19 wheel/sdist bytes match both official hashes; isolated hash-enforced install/pip-check, Backend450/13 opt-in skips and pip-audit zero findings pass. No suppression or other dependency update.
+- Separate policy-only branch admits that exact source and lock digest635e39f063247a2805963ca4a3ca47a6269bde7dfd7427c535a81d067f7aa376. Preserve23 paths, all seven workflows/empty Actions inventory, validator and22 other digests. Closed predecessor/admitted transition only; do not permit arbitrary mismatched inputs.
+-42 policy regressions fail against the old source/identity as expected, then pass with exact admission; direct frozen-source bytes match. Independent review and hosted trusted-base check precede merge/history connection. This branch changes no runtime image/config and sends no device/door command.

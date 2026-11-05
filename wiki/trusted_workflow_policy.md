@@ -2202,3 +2202,26 @@ This separate policy-only transition pins that exact reviewed feature and its sa
 PR442 reviewed feature b836d7edbee25f495e8228997ff0bac6e5f9a1df adds a fixed administrator HA credential/rollback operator and backend-discovered tests. Its Backend trusted-input inventory changes to e9080dbfcd8c76d874cb908ae7e238481070f8668e4c87b84bb77902693f6852. All23 protected paths, Git modes, seven-workflow/empty-local-action inventories and22 other protected hashes stay identical.
 
 This policy-only transition admits the exact feature and same-byte descendants as the sole persistent baseline. It does not install HA credentials or change SSH/broker authority. Merge policy after trusted-base checks, merge-connect main into the feature without squash/rebase, rerun exact-head checks, then merge-commit the feature.
+
+## 2026-11-05 certifi security input admission
+
+Reviewed PR478 source `570831b5c4ae5daa3b47b10f20be3781586cb856` fixes
+PYSEC-2026-4320 by replacing only certifi2026.7.22 with2026.10.19 and its
+verified PyPI wheel/sdist hashes; its derived SBOM changes only that component
+and deterministic serial. Isolated hash-enforced installation, pip-check,
+Backend450 run/13 opt-in skips and pip-audit2.10.1 zero findings pass. The old
+lock reproduces the advisory failure; no vulnerability ignore/suppression is added.
+
+This separate persistent-baseline transition changes one of23 protected digests:
+`backend/app/requirements.lock` from
+`4a1f393a82340ed062e7e2efdc7b57edd8df6d6d59d62a561643c93685a19a71` to
+`635e39f063247a2805963ca4a3ca47a6269bde7dfd7427c535a81d067f7aa376`.
+The other22 protected blobs, validator, seven workflows, exact namespace/path
+inventories and Git modes remain unchanged. Regression fixtures permit only the
+exact predecessor or admitted lock during the policy-only transition; candidate
+validation still rejects a mismatched whole bundle, fork or unproven ancestry.
+
+Merge this separate policy after trusted-base review/checks, then merge-connect
+main into PR478 without squash/rebase and rerun its exact-head checks. Admission
+alone publishes/deploys/installs nothing. Do not infer current NAS/Target health
+from source checks or send unattended door commands.
