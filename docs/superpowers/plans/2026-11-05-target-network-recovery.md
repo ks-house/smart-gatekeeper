@@ -34,7 +34,7 @@
 ## Task4: integrate and release
 - [x] Whole root/backend/native/Flutter checks, default and effective enabled Target compile, OTA contract and protected-input inventory.
 - [x] Independent review and regression fixes; update wiki/index/log/hardware evidence.
-- [ ] Reviewed source publication and signed artifacts; install/reboot/health evidence remains separate and no unattended actuator testing.
+- [x] Reviewed source publication and signed artifacts; install/reboot/health evidence remains separate and no unattended actuator testing.
 
 ## Progress
 - Existing isolated worktree retained; own incident documentation is preserved.
@@ -43,3 +43,5 @@
 
 - Final local validation: root512/14 explicit environment skips; Backend450/13 explicit opt-in skips; complete-dependency diagnostics33 PASS; Flutter136 PASS; Android167/zero failures-errors-skips in existing XML (Gradle task up-to-date); Dart format/analyzer, default+personal-enabled C6 and OTA contract PASS. Public example-only firmware fixture, no device upload.
 - Independent review found old-link failure qualification surviving natural reassociation. Policy+controller+actual-service RED-to-GREEN clears evidence/selection across link change while preserving stage/global budget; no remaining confirmed blocker. Physical RF/door and install gates remain separate.
+
+- Delivery complete: PR478 main2dfe93a, separate policy479. Target557 publication and independent Ed25519/full HTTPS proof pass; one safe OTA request installs boot913, VALID at00:29:28 KST11/06 and same-boot normal-state health. Owner-approved Backend exactmain ready12/12. Signed mobile47401 primary/fallback independently verified; phone install, physical entry, actual fault/SLO acceptance and exact latest ACL ACK remain separate unconfirmed gates.

@@ -1478,3 +1478,19 @@ No Target command, reboot, OTA trigger, relay action or physical success is infe
 | Hosted release / installed health / physical entry |Pending | Installed552 remains baseline; no unattended door command |
 
 Details: [Target network recovery](target_network_recovery_2026_11_05.md).
+
+## 2026-11-06 installed recovery acceptance
+
+| Gate | Result | Evidence limit |
+|---|---|---|
+| Source478 / policy479 |PASS, merged2dfe93a /118437f | Exact-head hosted firmware/Android/Backend/OTA/trusted; protection retained |
+| Target557 signed private publication |PASS42052375545 | Actual inputs, repeat/cmp, atomic retention, independent full HTTPS/Ed25519/hash/source verification |
+| Backend deployment |PASS42052375632 | Owner-approved production; public exact2dfe93a ready12/12/fresh verified Target |
+| Target install/health |PASS557 /boot913 | One safe OTA request, stage11/VALID then own stage14 current check; later219/249/280s IDLE/OFF/ready |
+| Live recovery/SLO/physical entry |Pending | No live failure injection or door command; zero recovery counters are normal-state evidence only |
+| Latest post-install exact ACL ACK |Not independently read | Existing read API lacks fields; browser connection unavailable; BLE ready is not that ACK |
+| Phone47401 installation |Pending | Publication and installation are separate |
+
+| Mobile publication gate | Result | Evidence limit |
+|---|---|---|
+| Signed47401 primary/fallback |PASS42052375603 | Independent full APKs/manifests match CI; signer, Ed25519, source and retained previous pairs verified; phone install pending |
